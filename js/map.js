@@ -34,22 +34,24 @@ RENFE.Map = (function () {
   /* ---------- Movimiento continuo de trenes ---------- */
   const prevPos = {};    // trainId → {lon, lat} (posición anterior del API)
   const targetPos = {};  // trainId → {lon, lat} (posición actual del API)
-  // Movimiento sobre la ruta: cada tren se proyecta sobre la polilínea
-  // de su ruta y se anima por longitud de arco (siempre sobre la línea).
   const routePolylines = {}; // trainId → {coords, cumDist}
   const routeDisplayGeom = {}; // trainId → GeoJSON geometry (MultiLineString/LineString)
   const prevArc = {};        // trainId → arco (m) de la posición anterior
   const targetArc = {};      // trainId → arco (m) de la posición actual
-  /* Si el GPS del tren cae a más de esta distancia de su ruta, no se
-   * proyecta (se usa la posición cruda: la ruta será errónea). */
   const MAX_SNAP_M = 10000;
   const MAX_ARC_JUMP_M = 4000;
-  let animStart = 0;     // timestamp del último update
-  const POLL_MS = 15000;  // intervalo de polling (debe coincidir con app.js)
-  const trainAnimStart = {}; // trainId → timestamp de cuando la posición cambió
-  const trainPollMs = {};    // trainId → ms reales entre cambios de posición
+  let animStart = 0;
+  const POLL_MS = 15000;
   let animFrameId = null;
   let animRunning = false;
+
+  /* ---------- Interpolación GPS (fallback) ---------- */
+  const trainAnimStart = {}; // id → performance.now() del último cambio GPS
+  const trainPollMs = {};    // id → intervalo adaptativo entre cambios GPS
+
+  /* ---------- Posición por horario (schedule-based) ---------- */
+  const trainSchedule = {}; // id → {dep, arr, prevCode, nextCode}
+  const segPolyCache = {};  // "codeA-codeB" → {coords, cumDist} | null
 
   /* Máximo de puntos por ruta: por encima se muestrea uniformemente
    * conservando los extremos. */
@@ -412,6 +414,52 @@ RENFE.Map = (function () {
     ];
   }
 
+  /** Polilínea con cumDist entre dos códigos de estación (cacheada). */
+  function getSegmentPoly(codeA, codeB) {
+    var key = codeA + "-" + codeB;
+    if (segPolyCache.hasOwnProperty(key)) return segPolyCache[key];
+    if (!railSegments || !railAliases) { segPolyCache[key] = null; return null; }
+
+    var seg = railSegmentBetween(codeA, codeB);
+    if (!seg) {
+      var ca = railAliases[codeA], cb = railAliases[codeB];
+      if (ca && cb && ca !== cb) seg = chainSegments(ca, cb);
+    }
+    if (!seg || seg.length < 2) { segPolyCache[key] = null; return null; }
+
+    var cumDist = new Array(seg.length);
+    cumDist[0] = 0;
+    for (var i = 1; i < seg.length; i++) {
+      var midLat = (seg[i][1] + seg[i - 1][1]) * 0.5;
+      var dx = (seg[i][0] - seg[i - 1][0]) * DEG_M * Math.cos(midLat * Math.PI / 180);
+      var dy = (seg[i][1] - seg[i - 1][1]) * DEG_M;
+      cumDist[i] = cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy);
+    }
+    var poly = { coords: seg, cumDist: cumDist };
+    segPolyCache[key] = poly;
+    return poly;
+  }
+
+  /** Posición basada en horario: depPrev/arrNext + polilínea OSM. */
+  function schedulePos(id) {
+    var sched = trainSchedule[id];
+    if (!sched) return null;
+    var dep = sched.dep, arr = sched.arr;
+    if (!dep || !arr || arr <= dep) return null;
+
+    var poly = getSegmentPoly(sched.prevCode, sched.nextCode);
+    if (!poly) return null;
+
+    var now = Date.now();
+    var t = (now - dep) / (arr - dep);
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+
+    var totalLen = poly.cumDist[poly.cumDist.length - 1];
+    if (totalLen < 1) return null;
+    return samplePolyline(poly, t * totalLen);
+  }
+
   /**
    * (Re)construye la polilínea y geometría de display de la ruta de un
    * tren. Para arc-length usa el segmento continuo más largo; para
@@ -529,11 +577,13 @@ RENFE.Map = (function () {
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
-  /** Posición interpolada de un tren: lerp lineal de prev a target
-   *  durante todo el intervalo de polling (30s), luego extrapolación
-   *  suave a la misma velocidad (máx 50% del salto) para dar
-   *  continuidad visual. Teleporta si el salto es irrazonable. */
+  /** Posición de un tren: primero intenta el horario (movimiento
+   *  continuo basado en depPrev/arrNext + polilínea OSM). Si no hay
+   *  datos de horario, cae al interpolador GPS anterior. */
   function livePos(id, now) {
+    var sp = schedulePos(id);
+    if (sp) return sp;
+
     var start = trainAnimStart[id] || animStart;
     var interval = trainPollMs[id] || POLL_MS;
     var elapsed = now - start;
@@ -973,6 +1023,17 @@ RENFE.Map = (function () {
         trainAnimStart[t.id] = performance.now();
         trainPollMs[t.id] = POLL_MS;
       }
+      // Horario para posición basada en schedule.
+      if (t.depPrev && t.arrNext && t.prevStation && t.nextStation) {
+        var dep = new Date(t.depPrev).getTime();
+        var arr = new Date(t.arrNext).getTime();
+        if (isFinite(dep) && isFinite(arr) && arr > dep) {
+          trainSchedule[t.id] = {
+            dep: dep, arr: arr,
+            prevCode: t.prevStation, nextCode: t.nextStation,
+          };
+        }
+      }
       // Proyectar posiciones sobre la polilínea de la ruta (arcos).
       updateTrainArcs(t.id);
     }
@@ -987,6 +1048,7 @@ RENFE.Map = (function () {
         delete targetArc[id];
         delete trainAnimStart[id];
         delete trainPollMs[id];
+        delete trainSchedule[id];
       }
     }
 
