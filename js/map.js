@@ -570,7 +570,6 @@ RENFE.Map = (function () {
         geometry: geom,
         properties: {
           id: t.id,
-          state: RENFE.delayState(t.delay),
           dimmed: !!(selectedId && t.id !== selectedId),
         },
       });
@@ -682,7 +681,7 @@ RENFE.Map = (function () {
       features: [{
         type: "Feature",
         geometry: geom,
-        properties: { state: train ? RENFE.delayState(train.delay) : "ok" },
+        properties: {},
       }],
     };
   }
@@ -723,35 +722,33 @@ RENFE.Map = (function () {
     map.addSource("selstops", { type: "geojson", data: emptyFC() });
     map.addSource("trains", { type: "geojson", data: emptyFC() });
 
-    // Rutas de todos los trenes: halo difuso + núcleo.
+    // Rutas de todos los trenes: halo difuso + núcleo (color neutro fijo).
     map.addLayer({
       id: "routes-glow", type: "line", source: "routes",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": STATE_GLOW,
+        "line-color": "rgba(56, 189, 248, 0.6)",
         "line-width": 6,
         "line-blur": 3,
-        "line-opacity": ["case", ["get", "dimmed"], 0.03,
-          ["match", ["get", "state"], "ok", 0.10, "warn", 0.28, "late", 0.30, 0.10]],
+        "line-opacity": ["case", ["get", "dimmed"], 0.03, 0.12],
       },
     });
     map.addLayer({
       id: "routes-core", type: "line", source: "routes",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": STATE_CORE,
+        "line-color": "rgba(56, 189, 248, 0.9)",
         "line-width": 2,
-        "line-opacity": ["case", ["get", "dimmed"], 0.12,
-          ["match", ["get", "state"], "ok", 0.55, "warn", 0.85, "late", 0.9, 0.55]],
+        "line-opacity": ["case", ["get", "dimmed"], 0.08, 0.45],
       },
     });
 
-    // Ruta seleccionada: resplandor completo en 3 capas.
+    // Ruta seleccionada: resplandor completo en 3 capas (cyan fijo).
     map.addLayer({
       id: "selroute-outer", type: "line", source: "selroute",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": STATE_GLOW,
+        "line-color": "rgba(56, 189, 248, 0.9)",
         "line-width": 13,
         "line-blur": 6,
         "line-opacity": 0.3,
@@ -761,7 +758,7 @@ RENFE.Map = (function () {
       id: "selroute-mid", type: "line", source: "selroute",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": STATE_GLOW,
+        "line-color": "rgba(56, 189, 248, 0.9)",
         "line-width": 6.5,
         "line-blur": 2,
         "line-opacity": 0.5,
@@ -771,7 +768,7 @@ RENFE.Map = (function () {
       id: "selroute-core", type: "line", source: "selroute",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": STATE_CORE,
+        "line-color": "#38bdf8",
         "line-width": 3,
         "line-opacity": 1.0,
       },
