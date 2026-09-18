@@ -65,6 +65,7 @@ RENFE.Map = (function () {
   //   aliases:  { códigoDelFeed → códigoCanónico } resuelto por nombre
   let railSegments = null;
   let railAliases = null;
+  let stationGraph = null; // canonicalCode → [adjacent canonical codes]
 
   /* Guardarraíl: un extremo del segmento pre-calculado debe caer cerca
    * de la estación real (coords aprendidas del feed). Protege frente a
@@ -78,6 +79,7 @@ RENFE.Map = (function () {
         if (!json || !json.segments) throw new Error("respuesta sin segmentos");
         railSegments = json.segments;
         railAliases = json.aliases || {};
+        buildStationGraph();
         if (json.stations) {
           for (var code in json.stations) {
             if (!RENFE.dynamicStationCoords[code]) {
@@ -134,6 +136,99 @@ RENFE.Map = (function () {
     return out;
   }
 
+  /** Construye grafo de adyacencia entre estaciones a partir de las
+   *  claves de los segmentos pre-calculados. */
+  function buildStationGraph() {
+    stationGraph = {};
+    for (var key in railSegments) {
+      var dash = key.indexOf("-");
+      var a = key.substring(0, dash);
+      var b = key.substring(dash + 1);
+      if (!stationGraph[a]) stationGraph[a] = [];
+      if (!stationGraph[b]) stationGraph[b] = [];
+      stationGraph[a].push(b);
+      stationGraph[b].push(a);
+    }
+  }
+
+  /** BFS por el grafo de estaciones para encontrar una cadena de
+   *  segmentos existentes entre dos códigos canónicos. Máximo 8 saltos.
+   *  Devuelve las coordenadas encadenadas [lon,lat][] o null. */
+  function chainSegments(canonA, canonB) {
+    if (!stationGraph || !stationGraph[canonA]) return null;
+    var MAX_HOPS = 8;
+    var parent = {};
+    parent[canonA] = "";
+    var queue = [canonA];
+    var qi = 0;
+    var depth = {};
+    depth[canonA] = 0;
+
+    while (qi < queue.length) {
+      var node = queue[qi++];
+      if (depth[node] >= MAX_HOPS) continue;
+      var neighbors = stationGraph[node];
+      if (!neighbors) continue;
+      for (var ni = 0; ni < neighbors.length; ni++) {
+        var next = neighbors[ni];
+        if (next === canonB) {
+          var path = [canonB];
+          var cur = node;
+          while (cur !== "") { path.push(cur); cur = parent[cur]; }
+          path.reverse();
+          return assembleChain(path);
+        }
+        if (parent.hasOwnProperty(next)) continue;
+        parent[next] = node;
+        depth[next] = depth[node] + 1;
+        queue.push(next);
+      }
+    }
+    return null;
+  }
+
+  /** Encadena los segmentos a lo largo de un camino de códigos canónicos,
+   *  orientando cada tramo por proximidad con el anterior. */
+  function assembleChain(pathCodes) {
+    var result = [];
+    for (var i = 0; i < pathCodes.length - 1; i++) {
+      var a = pathCodes[i], b = pathCodes[i + 1];
+      var key = a < b ? a + "-" + b : b + "-" + a;
+      var seg = railSegments[key];
+      if (!seg || seg.length < 2) return null;
+
+      var first = seg[0], last = seg[seg.length - 1];
+      var reversed = false;
+      if (result.length > 0) {
+        var prev = result[result.length - 1];
+        var dFirst = Math.abs(prev[0] - first[0]) + Math.abs(prev[1] - first[1]);
+        var dLast = Math.abs(prev[0] - last[0]) + Math.abs(prev[1] - last[1]);
+        reversed = dLast < dFirst;
+      } else {
+        var coordsA = RENFE.dynamicStationCoords[a];
+        if (coordsA) {
+          var df = Math.abs(coordsA.lon - first[0]) + Math.abs(coordsA.lat - first[1]);
+          var dl = Math.abs(coordsA.lon - last[0]) + Math.abs(coordsA.lat - last[1]);
+          reversed = dl < df;
+        }
+      }
+
+      var startJ = 0;
+      if (result.length > 0) {
+        var lastPt = result[result.length - 1];
+        var firstPt = reversed ? last : first;
+        if (Math.abs(lastPt[0] - firstPt[0]) < 1e-5 &&
+            Math.abs(lastPt[1] - firstPt[1]) < 1e-5) startJ = 1;
+      }
+      if (reversed) {
+        for (var j = seg.length - 1 - startJ; j >= 0; j--) result.push(seg[j]);
+      } else {
+        for (var j = startJ; j < seg.length; j++) result.push(seg[j]);
+      }
+    }
+    return result.length > 1 ? result : null;
+  }
+
   /**
    * Geometría de vía real (OSM) de una ruta completa. Devuelve un array
    * de segmentos continuos (cada uno es un array de [lon,lat]). Donde
@@ -153,6 +248,11 @@ RENFE.Map = (function () {
       const codeA = stations[i].code;
       const codeB = stations[i + 1].code;
       var seg = railSegmentBetween(codeA, codeB);
+      if (!seg) {
+        const ca = railAliases[codeA];
+        const cb = railAliases[codeB];
+        if (ca && cb && ca !== cb) seg = chainSegments(ca, cb);
+      }
       if (seg) {
         usedRail = true;
         if (current.length === 0) {
