@@ -593,12 +593,12 @@ RENFE.Map = (function () {
       style: VECTOR_STYLE_URL,
       center: [-3.7, 40.2],
       zoom: 5.5,
-      minZoom: 4,
+      minZoom: 2,
       maxZoom: 14,
       // Limitado a la España peninsular + Baleares: el sur queda en el
       // Estrecho (35.8°N) para no mostrar el norte de África, y el este
       // en 4.5°E (justo pasada Menorca).
-      maxBounds: [[-10.0, 35.8], [4.5, 44.0]],
+      maxBounds: [[-15.0, 33.0], [8.0, 47.0]],
       attributionControl: { compact: true },
     });
 
