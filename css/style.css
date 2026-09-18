@@ -406,6 +406,13 @@ main {
   transition: none;
 }
 
+/* Pausar las animaciones de pulso mientras el mapa se mueve: cientos de
+ * sombras animadas repintándose durante el zoom producen tirones. */
+.leaflet-container.moving .train-icon,
+.leaflet-zoom-anim .train-icon {
+  animation-play-state: paused;
+}
+
 /* Tooltips Leaflet estilo HUD */
 .leaflet-tooltip.train-tip,
 .leaflet-tooltip.station-tip {
@@ -718,8 +725,7 @@ aside::before {
   width: min(360px, calc(100% - 24px));
   max-height: calc(100% - 24px);
   overflow-y: auto;
-  background: rgba(10, 22, 40, 0.94);
-  backdrop-filter: blur(8px);
+  background: rgba(10, 22, 40, 0.97);
   border: 1px solid var(--border-glow);
   border-radius: var(--radius);
   padding: 14px;

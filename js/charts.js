@@ -140,7 +140,7 @@ RENFE.Charts = (function () {
             label: "Trenes",
             data: [0, 0, 0, 0, 0],
             backgroundColor: [STATUS_GOOD, STATUS_WARN, STATUS_CRIT, STATUS_CRIT, STATUS_CRIT],
-            maxBarThickness: 26,
+            maxBarThickness: 48,
             borderRadius: 4,
             borderSkipped: "start",
           },
@@ -221,7 +221,7 @@ RENFE.Charts = (function () {
               font: { size: 9.5 },
               callback: function (value) {
                 const label = this.getLabelForValue(value);
-                return label.length > 30 ? label.slice(0, 29) + "…" : label;
+                return label.length > 42 ? label.slice(0, 41) + "…" : label;
               },
             },
           },

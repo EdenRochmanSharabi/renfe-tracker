@@ -141,7 +141,7 @@
   function renderStats(visible) {
     const s = RENFE.computeStats(visible);
     $("#stat-total").textContent = s.total;
-    $("#stat-delayed").textContent = s.delayed;
+    $("#stat-delayed").textContent = s.delayed + "/" + s.total;
     $("#stat-avg").textContent = s.delayed ? s.avgDelay.toFixed(1) + "'" : "0'";
     $("#stat-max").textContent = s.maxDelay + "'";
     $("#stat-delayed").className = "stat-value " + (s.delayed ? "c-crit" : "c-good");
@@ -173,7 +173,9 @@
     list.querySelectorAll("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => {
         selectTrain(li.getAttribute("data-id"));
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        const mapWrap = document.getElementById("map-wrap");
+        if (mapWrap) mapWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+        else window.scrollTo({ top: 0, behavior: "smooth" });
       });
     });
   }

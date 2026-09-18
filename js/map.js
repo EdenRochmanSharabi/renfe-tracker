@@ -27,12 +27,15 @@ RENFE.Map = (function () {
     late: { glow: "rgba(239, 68, 68, 1)",   core: "#f87171" },
   };
 
-  /* Pesos/opacidades de las 3 capas: [halo exterior, halo medio, núcleo]. */
-  const LAYER_STYLES = {
-    base: { weights: [9, 4.5, 2],  opacities: [0.10, 0.25, 0.80] },
-    hi:   { weights: [13, 6.5, 3], opacities: [0.22, 0.48, 1.00] },
-    dim:  { weights: [9, 4.5, 2],  opacities: [0.03, 0.08, 0.22] },
-  };
+  /* Nivel de zoom por debajo del cual se ocultan las rutas (solo quedan
+   * los marcadores). Con cientos de polilíneas, alejarse mucho obliga a
+   * redibujar toda la red en cada frame; a ese nivel apenas aportan. */
+  const ROUTES_MIN_ZOOM = 6;
+  let routesVisible = true;
+
+  /* Máximo de puntos por polilínea: por encima se muestrea uniformemente
+   * conservando los extremos. */
+  const MAX_ROUTE_POINTS = 50;
 
   function init(containerId, clickHandler) {
     onTrainClick = clickHandler;
@@ -71,7 +74,52 @@ RENFE.Map = (function () {
     map.on("click", () => {
       if (onTrainClick) onTrainClick(null);
     });
+
+    // Clase "moving" en el contenedor mientras el mapa se desplaza o hace
+    // zoom: el CSS la usa para desactivar transiciones de marcadores,
+    // pausar pulsos y ocultar las capas de efecto (scanlines/rejilla).
+    const container = map.getContainer();
+    map.on("zoomstart movestart", () => container.classList.add("moving"));
+    map.on("zoomend moveend", () => container.classList.remove("moving"));
+    map.on("zoomend", updateRouteVisibility);
+    updateRouteVisibility();
+
     return map;
+  }
+
+  /** Oculta la capa de rutas a niveles de zoom bajos; la ruta del tren
+   *  seleccionado se mantiene visible añadiéndola directamente al mapa. */
+  function updateRouteVisibility() {
+    const want = map.getZoom() >= ROUTES_MIN_ZOOM;
+    if (want && !routesVisible) {
+      map.addLayer(routeLayer);
+      routesVisible = true;
+    } else if (!want && routesVisible) {
+      map.removeLayer(routeLayer);
+      routesVisible = false;
+    }
+    syncSelectedOverlay();
+  }
+
+  /** Con las rutas ocultas por zoom, la seleccionada se pinta aparte. */
+  function syncSelectedOverlay() {
+    for (const id in routeLines) {
+      const rl = routeLines[id];
+      const shouldOverlay = !routesVisible && id === selectedId;
+      if (shouldOverlay && !rl.onMap) {
+        for (const layer of rl.layers) layer.addTo(map);
+        rl.onMap = true;
+      } else if (!shouldOverlay && rl.onMap) {
+        rl.onMap = false;
+        for (const layer of rl.layers) {
+          map.removeLayer(layer);
+          // Reinscribir en el grupo: si el grupo está en el mapa, esto
+          // vuelve a pintar la capa a través de él.
+          routeLayer.removeLayer(layer);
+          routeLayer.addLayer(layer);
+        }
+      }
+    }
   }
 
   function drawStations() {
@@ -124,28 +172,55 @@ RENFE.Map = (function () {
 
   /* ---------- Rutas siempre visibles ---------- */
 
-  function latlngsFor(route) {
-    if (route.path && route.path.length > 1) {
-      return route.path.map((p) => [p.lat, p.lon]);
-    }
-    const pts = [];
-    if (route.stations) {
-      for (const st of route.stations) {
-        const c = RENFE.stationCoords(st.code);
-        if (c) pts.push([c.lat, c.lon]);
-      }
-    }
-    return pts;
+  /** Muestreo uniforme conservando extremos: rutas con cientos de puntos
+   *  no aportan detalle visible y encarecen cada redibujado del canvas. */
+  function downsamplePts(pts, maxPts) {
+    if (pts.length <= maxPts) return pts;
+    const out = [];
+    const step = (pts.length - 1) / (maxPts - 1);
+    for (let i = 0; i < maxPts; i++) out.push(pts[Math.round(i * step)]);
+    return out;
   }
 
-  function styleForLayer(state, mode, layerIdx) {
+  function latlngsFor(route) {
+    let pts;
+    if (route.path && route.path.length > 1) {
+      pts = route.path.map((p) => [p.lat, p.lon]);
+    } else {
+      pts = [];
+      if (route.stations) {
+        for (const st of route.stations) {
+          const c = RENFE.stationCoords(st.code);
+          if (c) pts.push([c.lat, c.lon]);
+        }
+      }
+    }
+    return downsamplePts(pts, MAX_ROUTE_POINTS);
+  }
+
+  /**
+   * Especifica las capas de una ruta según estado y modo. Menos polilíneas
+   * = zoom más fluido: los trenes en hora llevan una sola línea fina, los
+   * retrasados halo + núcleo, y solo el seleccionado el resplandor
+   * completo de 3 capas.
+   */
+  function layerSpecs(state, mode) {
     const colors = ROUTE_COLORS[state] || ROUTE_COLORS.ok;
-    const s = LAYER_STYLES[mode] || LAYER_STYLES.base;
-    return {
-      color: layerIdx === 2 ? colors.core : colors.glow,
-      weight: s.weights[layerIdx],
-      opacity: s.opacities[layerIdx],
-    };
+    if (mode === "hi") {
+      return [
+        { color: colors.glow, weight: 13,  opacity: 0.22 },
+        { color: colors.glow, weight: 6.5, opacity: 0.48 },
+        { color: colors.core, weight: 3,   opacity: 1.0 },
+      ];
+    }
+    const dim = mode === "dim";
+    if (state === "ok") {
+      return [{ color: colors.core, weight: 2, opacity: dim ? 0.10 : 0.55 }];
+    }
+    return [
+      { color: colors.glow, weight: 4.5, opacity: dim ? 0.08 : 0.25 },
+      { color: colors.core, weight: 2,   opacity: dim ? 0.20 : 0.85 },
+    ];
   }
 
   function modeFor(id) {
@@ -153,12 +228,38 @@ RENFE.Map = (function () {
     return id === selectedId ? "hi" : "dim";
   }
 
+  /** (Re)construye las polilíneas de una ruta según su spec actual. */
+  function buildLayers(rl) {
+    const specs = layerSpecs(rl.state, rl.mode);
+    for (const layer of rl.layers) {
+      routeLayer.removeLayer(layer);
+      map.removeLayer(layer);
+    }
+    rl.layers = specs.map((s) =>
+      L.polyline(rl.latlngs, {
+        renderer: routeRenderer,
+        interactive: false,
+        lineCap: "round",
+        lineJoin: "round",
+        color: s.color,
+        weight: s.weight,
+        opacity: s.opacity,
+      }).addTo(routeLayer)
+    );
+    if (rl.onMap) for (const layer of rl.layers) layer.addTo(map);
+  }
+
   function applyRouteStyle(id) {
     const rl = routeLines[id];
     if (!rl) return;
     const mode = modeFor(id);
-    for (let i = 0; i < rl.layers.length; i++) {
-      rl.layers[i].setStyle(styleForLayer(rl.state, mode, i));
+    const specs = layerSpecs(rl.state, mode);
+    if (specs.length !== rl.layers.length) {
+      rl.mode = mode;
+      buildLayers(rl);
+    } else {
+      rl.mode = mode;
+      for (let i = 0; i < specs.length; i++) rl.layers[i].setStyle(specs[i]);
     }
     if (mode === "hi") {
       for (const layer of rl.layers) layer.bringToFront();
@@ -172,7 +273,10 @@ RENFE.Map = (function () {
   function removeRouteLine(id) {
     const rl = routeLines[id];
     if (!rl) return;
-    for (const layer of rl.layers) routeLayer.removeLayer(layer);
+    for (const layer of rl.layers) {
+      routeLayer.removeLayer(layer);
+      map.removeLayer(layer);
+    }
     delete routeLines[id];
   }
 
@@ -197,22 +301,16 @@ RENFE.Map = (function () {
     }
     if (rl) removeRouteLine(train.id);
 
-    const layers = [];
-    for (let i = 0; i < 3; i++) {
-      layers.push(
-        L.polyline(latlngs, Object.assign(
-          {
-            renderer: routeRenderer,
-            interactive: false,
-            lineCap: "round",
-            lineJoin: "round",
-          },
-          styleForLayer(state, "base", i)
-        )).addTo(routeLayer)
-      );
-    }
-    routeLines[train.id] = { layers, state, geomKey };
-    applyRouteStyle(train.id);
+    rl = routeLines[train.id] = {
+      layers: [],
+      state: state,
+      geomKey: geomKey,
+      latlngs: latlngs,
+      mode: modeFor(train.id),
+      onMap: false,
+    };
+    buildLayers(rl);
+    if (rl.mode === "hi") applyRouteStyle(train.id);
   }
 
   /* ---------- Ciclo de actualización ---------- */
@@ -265,6 +363,9 @@ RENFE.Map = (function () {
     for (const id in routeLines) {
       if (!seen.has(id)) removeRouteLine(id);
     }
+    // Si la ruta seleccionada se reconstruyó con las rutas ocultas por
+    // zoom, volver a pintarla como capa directa.
+    syncSelectedOverlay();
   }
 
   /* ---------- Selección ---------- */
@@ -288,6 +389,8 @@ RENFE.Map = (function () {
       ensureRouteLine(train, route);
     }
     restyleAllRoutes();
+    // Con las rutas ocultas por zoom bajo, la seleccionada se pinta aparte.
+    syncSelectedOverlay();
 
     if (!id) return;
 
