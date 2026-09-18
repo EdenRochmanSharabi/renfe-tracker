@@ -49,65 +49,10 @@ RENFE.Map = (function () {
 
   /* ---------- Estilos base ---------- */
 
-  /** Estilo vectorial oscuro sobre OpenFreeMap (gratuito, sin clave):
-   *  teselas vectoriales → zoom continuo renderizado en GPU. */
-  const VECTOR_STYLE = {
-    version: 8,
-    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-    sources: {
-      openmaptiles: {
-        type: "vector",
-        url: "https://tiles.openfreemap.org/planet",
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; OpenMapTiles',
-      },
-    },
-    layers: [
-      { id: "background", type: "background",
-        paint: { "background-color": "#04080f" } },
-      { id: "water", type: "fill", source: "openmaptiles",
-        "source-layer": "water",
-        paint: { "fill-color": "#0a1628" } },
-      { id: "waterway", type: "line", source: "openmaptiles",
-        "source-layer": "waterway",
-        paint: { "line-color": "rgba(10, 22, 40, 0.9)", "line-width": 1 } },
-      { id: "boundary", type: "line", source: "openmaptiles",
-        "source-layer": "boundary",
-        filter: ["<=", ["get", "admin_level"], 4],
-        paint: {
-          "line-color": "rgba(56, 189, 248, 0.16)",
-          "line-width": 1,
-        } },
-      { id: "rail", type: "line", source: "openmaptiles",
-        "source-layer": "transportation",
-        filter: ["==", ["get", "class"], "rail"],
-        paint: {
-          "line-color": "rgba(56, 189, 248, 0.10)",
-          "line-width": 0.6,
-        } },
-      { id: "roads", type: "line", source: "openmaptiles",
-        "source-layer": "transportation",
-        filter: ["in", ["get", "class"], ["literal", ["motorway", "trunk", "primary"]]],
-        paint: {
-          "line-color": "rgba(56, 189, 248, 0.06)",
-          "line-width": 0.5,
-        } },
-      { id: "places", type: "symbol", source: "openmaptiles",
-        "source-layer": "place",
-        filter: ["in", ["get", "class"], ["literal", ["city", "town"]]],
-        layout: {
-          "text-field": "{name}",
-          "text-font": ["Noto Sans Regular"],
-          "text-size": ["step", ["zoom"], 11, 8, 12],
-          "text-max-width": 8,
-        },
-        paint: {
-          "text-color": "rgba(123, 139, 168, 0.85)",
-          "text-halo-color": "#04080f",
-          "text-halo-width": 1.2,
-        } },
-    ],
-  };
+  /** URL del estilo CARTO Dark Matter (vectorial, gratuito sin clave,
+   *  CDN rápido): zoom continuo renderizado en GPU. */
+  const VECTOR_STYLE_URL =
+    "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
   /** Fallback: teselas raster OSM oscurecidas en la propia GPU
    *  (raster-* paint). Menos fluido que vector, pero sin dependencias. */
@@ -472,7 +417,7 @@ RENFE.Map = (function () {
 
     map = new maplibregl.Map({
       container: containerId,
-      style: VECTOR_STYLE,
+      style: VECTOR_STYLE_URL,
       center: [-3.7, 40.2],
       zoom: 5.5,
       minZoom: 4,
@@ -502,9 +447,7 @@ RENFE.Map = (function () {
       if (usedFallback || styleEverLoaded) return;
       const err = e && e.error;
       const msg = (err && err.message) || "";
-      const fromVector =
-        e.sourceId === "openmaptiles" || msg.indexOf("openfreemap") !== -1;
-      if (fromVector) {
+      if (msg.indexOf("carto") !== -1 || e.sourceId === "carto") {
         usedFallback = true;
         console.warn("Teselas vectoriales no disponibles; usando raster OSM:", msg);
         map.setStyle(RASTER_STYLE);
