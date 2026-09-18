@@ -4,9 +4,9 @@
 "use strict";
 
 (function () {
-  const FLEET_INTERVAL_MS = 10000;   // flota cada 10 s
-  const ROUTES_EVERY_N_CYCLES = 12;  // rutas cada 120 s
-  const STALE_MS = 30000;            // datos "antiguos" a partir de 30 s
+  const FLEET_INTERVAL_MS = 15000;   // flota cada 15 s
+  const ROUTES_EVERY_N_CYCLES = 8;   // rutas cada 120 s
+  const STALE_MS = 45000;            // datos "antiguos" a partir de 45 s
 
   const state = {
     trains: [],

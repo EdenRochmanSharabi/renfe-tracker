@@ -43,9 +43,11 @@ RENFE.Map = (function () {
   /* Si el GPS del tren cae a más de esta distancia de su ruta, no se
    * proyecta (se usa la posición cruda: la ruta será errónea). */
   const MAX_SNAP_M = 10000;
-  const MAX_ARC_JUMP_M = 4000; // ~480 km/h en 30s — teleportar si mayor
+  const MAX_ARC_JUMP_M = 4000;
   let animStart = 0;     // timestamp del último update
-  const POLL_MS = 10000;  // intervalo de polling (debe coincidir con app.js)
+  const POLL_MS = 15000;  // intervalo de polling (debe coincidir con app.js)
+  const trainAnimStart = {}; // trainId → timestamp de cuando la posición cambió
+  const trainPollMs = {};    // trainId → ms reales entre cambios de posición
   let animFrameId = null;
   let animRunning = false;
 
@@ -532,8 +534,10 @@ RENFE.Map = (function () {
    *  suave a la misma velocidad (máx 50% del salto) para dar
    *  continuidad visual. Teleporta si el salto es irrazonable. */
   function livePos(id, now) {
-    var elapsed = now - animStart;
-    var t = elapsed / POLL_MS;
+    var start = trainAnimStart[id] || animStart;
+    var interval = trainPollMs[id] || POLL_MS;
+    var elapsed = now - start;
+    var t = elapsed / interval;
     if (t < 0) t = 0;
 
     var poly = routePolylines[id];
@@ -955,10 +959,20 @@ RENFE.Map = (function () {
       if (!inSpain(t.lon, t.lat)) continue;
       seen[t.id] = true;
       var prev = targetPos[t.id];
+      var posChanged = prev && (prev.lon !== t.lon || prev.lat !== t.lat);
       prevPos[t.id] = prev
         ? { lon: prev.lon, lat: prev.lat }
         : { lon: t.lon, lat: t.lat };
       targetPos[t.id] = { lon: t.lon, lat: t.lat };
+      if (posChanged) {
+        var now = performance.now();
+        var lastChange = trainAnimStart[t.id];
+        trainPollMs[t.id] = lastChange ? Math.min(now - lastChange, 60000) : POLL_MS;
+        trainAnimStart[t.id] = now;
+      } else if (!prev) {
+        trainAnimStart[t.id] = performance.now();
+        trainPollMs[t.id] = POLL_MS;
+      }
       // Proyectar posiciones sobre la polilínea de la ruta (arcos).
       updateTrainArcs(t.id);
     }
@@ -971,6 +985,8 @@ RENFE.Map = (function () {
         delete routeDisplayGeom[id];
         delete prevArc[id];
         delete targetArc[id];
+        delete trainAnimStart[id];
+        delete trainPollMs[id];
       }
     }
 
