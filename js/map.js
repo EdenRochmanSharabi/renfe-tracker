@@ -199,10 +199,19 @@ RENFE.Map = (function () {
    *  Prioridad: vía real OSM pre-calculada → secuencia del API →
    *  línea recta entre estaciones. */
   function coordsFor(route) {
+    // Prioridad 1: secuencia del API de Renfe (GPS real del tren).
+    // Solo recurrir a OSM cuando la secuencia es muy escasa.
+    let pts;
+    if (route.path && route.path.length > 10) {
+      pts = route.path.map((p) => [p.lon, p.lat]);
+      return downsamplePts(pts, MAX_RAIL_POINTS);
+    }
+
+    // Prioridad 2: geometría OSM pre-calculada.
     const rail = railPathFor(route);
     if (rail) return downsamplePts(rail, MAX_RAIL_POINTS);
 
-    let pts;
+    // Prioridad 3: secuencia escasa del API.
     if (route.path && route.path.length > 1) {
       pts = route.path.map((p) => [p.lon, p.lat]);
     } else {
