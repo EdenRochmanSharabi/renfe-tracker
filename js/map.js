@@ -557,11 +557,16 @@ RENFE.Map = (function () {
     return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
   }
 
+  function inSpain(lon, lat) {
+    return lon >= -10 && lon <= 5 && lat >= 35 && lat <= 44;
+  }
+
   function trainsFC() {
     var now = performance.now();
     const features = [];
     for (const t of lastTrains) {
       var coords = livePos(t.id, now) || [t.lon, t.lat];
+      if (!inSpain(coords[0], coords[1])) continue;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: coords },
@@ -935,6 +940,7 @@ RENFE.Map = (function () {
     var seen = {};
     for (var i = 0; i < incoming.length; i++) {
       var t = incoming[i];
+      if (!inSpain(t.lon, t.lat)) continue;
       seen[t.id] = true;
       var prev = targetPos[t.id];
       if (prev && (prev.lon !== t.lon || prev.lat !== t.lat)) {
