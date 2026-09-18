@@ -191,14 +191,12 @@ RENFE.Map = (function () {
       t = t * (2 - t); // easeOutQuad
       return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
     }
-    // Fase 2: extrapolar a velocidad constante
-    // Asumimos que prev→target ocurrió en POLL_MS; calcular velocidad/ms
+    // Fase 2: extrapolar suavemente — velocidad constante pero limitada
+    // a 0.5x la distancia del último salto para no alejar el tren de su ruta.
     if (dLon === 0 && dLat === 0) return [tgt.lon, tgt.lat];
     var extraMs = elapsed - LERP_MS;
-    var speed = 1 / POLL_MS; // fracción del vector por ms
-    var extra = extraMs * speed;
-    // Limitar extrapolación a 1x la distancia del último update
-    extra = Math.min(extra, 1.0);
+    var speed = 1 / POLL_MS;
+    var extra = Math.min(extraMs * speed, 0.5);
     return [tgt.lon + dLon * extra, tgt.lat + dLat * extra];
   }
 
@@ -348,11 +346,11 @@ RENFE.Map = (function () {
       },
     });
 
-    // Estaciones AVE: halo + punto.
+    // Estaciones AVE: halo + punto + nombre.
     map.addLayer({
       id: "stations-glow", type: "circle", source: "stations",
       paint: {
-        "circle-radius": 6,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4, 8, 7, 12, 10],
         "circle-color": "rgba(56, 189, 248, 0.2)",
         "circle-blur": 0.8,
       },
@@ -360,10 +358,28 @@ RENFE.Map = (function () {
     map.addLayer({
       id: "stations-dot", type: "circle", source: "stations",
       paint: {
-        "circle-radius": 3,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 2.5, 8, 4, 12, 6],
         "circle-color": "#0f1f38",
         "circle-stroke-color": "rgba(56, 189, 248, 0.75)",
         "circle-stroke-width": 1.5,
+      },
+    });
+    map.addLayer({
+      id: "stations-label", type: "symbol", source: "stations",
+      minzoom: 7,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10, 12, 13],
+        "text-offset": [0, 1.2],
+        "text-anchor": "top",
+        "text-max-width": 8,
+        "text-allow-overlap": false,
+      },
+      paint: {
+        "text-color": "rgba(56, 189, 248, 0.9)",
+        "text-halo-color": "#04080f",
+        "text-halo-width": 1.5,
       },
     });
 
