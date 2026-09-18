@@ -138,6 +138,104 @@
     </aside>
   </main>
 
+  <!-- Narrativa: La muerte del ferrocarril español -->
+  <section id="narrative">
+    <div class="narr-header">
+      <h2 class="narr-title">La muerte del ferrocarril español</h2>
+      <p class="narr-subtitle">Datos históricos sobre el deterioro de la red ferroviaria convencional</p>
+    </div>
+
+    <div class="narr-grid">
+
+      <div class="narr-block">
+        <div class="narr-stat-big">
+          <span class="narr-num c-crit">68,2%</span>
+          <span class="narr-label">puntualidad en 2025</span>
+        </div>
+        <p class="narr-text">
+          En enero-septiembre de 2025, solo 48.444 de 71.062 trenes llegaron puntuales.
+          En 2019 la puntualidad era del 91%. El colapso no fue gradual: se aceleró
+          a partir de 2023 conforme la falta de mantenimiento se hizo insostenible.
+        </p>
+        <div class="chart-box narr-chart"><canvas id="chart-punctuality"></canvas></div>
+        <p class="narr-source">Fuentes: CNMC, Renfe informes anuales</p>
+      </div>
+
+      <div class="narr-block">
+        <div class="narr-stat-big">
+          <span class="narr-num c-warn">95.900 €/km</span>
+          <span class="narr-label">mantenimiento anual por km de vía</span>
+        </div>
+        <p class="narr-text">
+          La media europea es 191.100 €/km. España gasta la mitad. El déficit acumulado
+          de mantenimiento se estima en 3.600 millones de euros según el Instituto de
+          Estudios Económicos. Mientras tanto, la inversión total en infraestructura cayó
+          un 63% desde 2009.
+        </p>
+        <div class="chart-box narr-chart"><canvas id="chart-investment"></canvas></div>
+        <p class="narr-source">Fuentes: Eurostat, IEE, Presupuestos Generales del Estado</p>
+      </div>
+
+      <div class="narr-block">
+        <div class="narr-stat-big">
+          <span class="narr-num c-crit">7.600 km</span>
+          <span class="narr-label">de vías abandonadas o clausuradas</span>
+        </div>
+        <p class="narr-text">
+          La red ferroviaria española alcanzó más de 18.000 km. Hoy quedan 15.519 km.
+          Solo en 1985 se cerraron 914 km y 132 estaciones de golpe. Más de 3.100 km
+          de antiguas vías se han reconvertido en carriles bici ("Vías Verdes"),
+          el epitafio más bonito posible para un tren que ya no pasa.
+        </p>
+        <div class="chart-box narr-chart"><canvas id="chart-network"></canvas></div>
+        <p class="narr-source">Fuentes: ADIF, Fundación de los Ferrocarriles Españoles</p>
+      </div>
+
+      <div class="narr-block">
+        <div class="narr-stat-big">
+          <span class="narr-num c-good">537 M</span>
+          <span class="narr-label">pasajeros en 2024 (récord histórico)</span>
+        </div>
+        <p class="narr-text">
+          Paradójicamente, los pasajeros aumentan. Pero el récord se concentra en
+          Cercanías (442M) y AVE. La Media Distancia, que conecta la España rural,
+          se desangra: en 2026 se suprimieron todos los servicios de Media Distancia
+          en Andalucía excepto Madrid-Jaén.
+        </p>
+        <div class="chart-box narr-chart"><canvas id="chart-passengers"></canvas></div>
+        <p class="narr-source">Fuentes: Renfe informes anuales, CNMC</p>
+      </div>
+
+      <div class="narr-block">
+        <div class="narr-stat-big">
+          <span class="narr-num c-crit">19,2%</span>
+          <span class="narr-label">de las muertes ferroviarias de toda la UE-27</span>
+        </div>
+        <p class="narr-text">
+          Entre 2003 y 2023, 154 pasajeros murieron en trenes españoles, el porcentaje
+          más alto de la Unión Europea. El accidente de Angrois (Santiago, 2013) se cobró
+          80 vidas. Entre 2015 y 2024, hubo 204 muertes en total, el 96% en pasos a
+          nivel o por invasión de vía.
+        </p>
+        <div class="chart-box narr-chart"><canvas id="chart-accidents"></canvas></div>
+        <p class="narr-source">Fuentes: ERA, CIAF, Ministerio de Transportes</p>
+      </div>
+
+      <div class="narr-block narr-block-wide">
+        <h3 class="narr-section-title">La paradoja del AVE</h3>
+        <p class="narr-text">
+          España tiene la segunda red de alta velocidad más extensa del mundo tras China.
+          Pero esa inversión masiva en AVE se financió desviando recursos de la red
+          convencional. El resultado: trenes de 300 km/h conectan Madrid con las capitales,
+          mientras las líneas regionales que unen pueblos y ciudades medianas se deterioran,
+          pierden frecuencias y finalmente se cierran. Los datos que ves arriba, en tiempo
+          real, son la consecuencia.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
@@ -147,5 +245,6 @@
   <script src="js/map.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/narrative.js"></script>
 </body>
 </html>

@@ -761,6 +761,7 @@ aside::before {
   .filters { margin-left: 0; width: 100%; }
   .filters input[type="search"] { flex: 1; min-width: 120px; width: auto; }
   .panel-scroll { padding: 14px; }
+  .narr-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {
@@ -814,4 +815,126 @@ aside::before {
   .chart-box.tall { height: 260px; }
 
   .maplibregl-cooperative-gesture-screen { font-size: 12px !important; }
+
+  .narr-grid { grid-template-columns: 1fr; }
+  .narr-header { padding: 32px 18px 18px; }
+  .narr-title { font-size: 22px; }
+  .narr-block { padding: 18px 16px; }
+  .narr-num { font-size: 28px; }
+}
+
+/* ---------- Narrativa: La muerte del ferrocarril ---------- */
+#narrative {
+  background:
+    radial-gradient(ellipse 100% 60% at 50% 0%, rgba(239, 68, 68, 0.04), transparent 50%),
+    var(--bg);
+  border-top: 1px solid var(--border);
+  padding-bottom: 48px;
+}
+
+.narr-header {
+  text-align: center;
+  padding: 48px 24px 24px;
+}
+.narr-title {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--crit);
+  text-shadow: 0 0 20px var(--crit-glow);
+  margin-bottom: 8px;
+}
+.narr-subtitle {
+  font-size: 13px;
+  color: var(--text-2);
+  letter-spacing: 0.5px;
+}
+
+.narr-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 18px;
+}
+
+.narr-block {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.02), transparent 30%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+.narr-block:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.06);
+}
+.narr-block::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--crit) 30%, var(--crit) 70%, transparent);
+  opacity: 0.4;
+}
+
+.narr-block-wide {
+  grid-column: 1 / -1;
+}
+
+.narr-stat-big {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+.narr-num {
+  font-family: var(--mono);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.narr-num.c-crit { color: var(--crit); text-shadow: 0 0 12px var(--crit-glow); }
+.narr-num.c-warn { color: var(--warn); text-shadow: 0 0 12px var(--warn-glow); }
+.narr-num.c-good { color: var(--good); text-shadow: 0 0 12px var(--good-glow); }
+.narr-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.narr-text {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.narr-chart {
+  height: clamp(160px, 20vw, 220px);
+  margin-bottom: 8px;
+}
+
+.narr-source {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.narr-section-title {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
 }
