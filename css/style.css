@@ -370,28 +370,17 @@ main {
   background-color: rgba(15, 31, 56, 0.9) !important;
 }
 
-/* Aviso de scroll (solo aparece la primera vez) */
-.map-scroll-hint {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(4, 8, 15, 0.85);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 13px;
+/* Aviso de gestos cooperativos: estilo HUD + ocultar tras primera vez */
+.maplibregl-cooperative-gesture-screen {
+  background: rgba(4, 8, 15, 0.72) !important;
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
+  font-size: 13px !important;
   letter-spacing: 0.5px;
   text-shadow: 0 0 12px var(--accent-glow);
-  padding: 12px 24px;
-  border-radius: 8px;
-  border: 1px solid var(--border-glow);
-  z-index: 700;
-  pointer-events: none;
-  animation: hint-fade 2.5s ease-out forwards;
 }
-@keyframes hint-fade {
-  0% { opacity: 1; }
-  70% { opacity: 1; }
-  100% { opacity: 0; }
+.maplibregl-cooperative-gesture-screen.hint-dismissed {
+  display: none !important;
 }
 
 /* ---------- Panel de datos (debajo del mapa, scroll de página) ---------- */
@@ -824,5 +813,5 @@ aside::before {
   .chart-box { height: 200px; }
   .chart-box.tall { height: 260px; }
 
-  .map-scroll-hint { font-size: 12px; }
+  .maplibregl-cooperative-gesture-screen { font-size: 12px !important; }
 }

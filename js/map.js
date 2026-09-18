@@ -600,36 +600,27 @@ RENFE.Map = (function () {
       // en 4.5°E (justo pasada Menorca).
       maxBounds: [[-15.0, 33.0], [8.0, 47.0]],
       attributionControl: { compact: true },
+      cooperativeGestures: true,
+      locale: {
+        "CooperativeGesturesHandler.WindowsHelpText":
+          "Usa Ctrl + rueda para hacer zoom en el mapa",
+        "CooperativeGesturesHandler.MacHelpText":
+          "Usa ⌘ + rueda para hacer zoom en el mapa",
+        "CooperativeGesturesHandler.MobileHelpText":
+          "Usa dos dedos para mover el mapa",
+      },
     });
 
-    // Scroll: rueda sola = scroll de página, Ctrl/⌘+rueda = zoom.
-    // Aviso solo la primera vez que el usuario intenta hacer scroll sin modifier.
-    map.scrollZoom.disable();
-    var hintShown = false;
-    var hintEl = null;
-    function showScrollHint() {
-      if (hintShown) return;
-      hintShown = true;
-      hintEl = document.createElement("div");
-      hintEl.className = "map-scroll-hint";
-      var isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
-      hintEl.textContent = isMac
-        ? "Usa ⌘ + rueda para hacer zoom"
-        : "Usa Ctrl + rueda para hacer zoom";
-      map.getContainer().appendChild(hintEl);
+    // Ocultar el aviso de gestos cooperativos tras la primera vez.
+    var gestureHidden = false;
+    map.getContainer().addEventListener("wheel", function () {
+      if (gestureHidden) return;
+      gestureHidden = true;
       setTimeout(function () {
-        if (hintEl) { hintEl.remove(); hintEl = null; }
-      }, 2500);
-    }
-    map.getCanvas().addEventListener("wheel", function (e) {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        var delta = -e.deltaY * (e.deltaMode === 1 ? 60 : 1) * 0.002;
-        map.zoomTo(map.getZoom() + delta, { around: map.unproject([e.offsetX, e.offsetY]) });
-      } else {
-        showScrollHint();
-      }
-    }, { passive: false });
+        var el = map.getContainer().querySelector(".maplibregl-cooperative-gesture-screen");
+        if (el) el.classList.add("hint-dismissed");
+      }, 3000);
+    }, { passive: true });
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "bottom-right"
