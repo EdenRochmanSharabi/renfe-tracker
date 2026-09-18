@@ -133,27 +133,6 @@ RENFE.Map = (function () {
     return out;
   }
 
-  /**
-   * Tramo de la secuencia GPS del API entre dos paradas (ambas deben
-   * aparecer con `code` dentro de route.path). Devuelve [[lon,lat],…]
-   * o null si no se puede delimitar el tramo.
-   */
-  function secuenciaBetween(route, codeA, codeB) {
-    const path = route.path;
-    if (!path || path.length < 2) return null;
-    let ia = -1, ib = -1;
-    for (let i = 0; i < path.length; i++) {
-      const c = path[i].code;
-      if (ia === -1) {
-        if (c === codeA) ia = i;
-      } else if (c === codeB) { ib = i; break; }
-    }
-    if (ia === -1 || ib === -1 || ib <= ia) return null;
-    const out = [];
-    for (let j = ia; j <= ib; j++) out.push([path[j].lon, path[j].lat]);
-    return out.length > 1 ? out : null;
-  }
-
   /** Añade `seg` a `path` evitando duplicar el punto de unión. */
   function appendSeg(path, seg) {
     let start = 0;
@@ -184,19 +163,14 @@ RENFE.Map = (function () {
     for (let i = 0; i < stations.length - 1; i++) {
       const codeA = stations[i].code;
       const codeB = stations[i + 1].code;
-      let seg = railSegmentBetween(codeA, codeB);
+      var seg = railSegmentBetween(codeA, codeB);
       if (seg) {
         usedRail = true;
-      } else {
-        seg = secuenciaBetween(route, codeA, codeB);
-        if (!seg) {
-          const A = RENFE.stationCoords(codeA);
-          const B = RENFE.stationCoords(codeB);
-          if (A && B) seg = [[A.lon, A.lat], [B.lon, B.lat]];
-        }
+        appendSeg(path, seg);
       }
-      if (!seg) continue; // sin datos para este tramo: saltar
-      appendSeg(path, seg);
+      // Si no hay segmento OSM, NO empalmar la secuencia GPS: crearía
+      // líneas rectas "fantasma" paralelas a la geometría real de otros
+      // trenes en el mismo corredor. Preferimos un hueco limpio.
     }
     return usedRail && path.length > 1 ? path : null;
   }
