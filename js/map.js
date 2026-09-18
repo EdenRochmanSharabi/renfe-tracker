@@ -31,12 +31,15 @@ RENFE.Map = (function () {
   let usedFallback = false;    // ya se cambió al estilo raster
   let styleEverLoaded = false; // el estilo vectorial llegó a cargar
 
-  /* ---------- Interpolación suave de posiciones ---------- */
-  const prevPos = {};    // trainId → {lon, lat}
-  const targetPos = {};  // trainId → {lon, lat}
-  let animStart = 0;
-  const ANIM_MS = 2000;  // duración de la transición entre posiciones
+  /* ---------- Movimiento continuo de trenes ---------- */
+  const prevPos = {};    // trainId → {lon, lat} (posición anterior del API)
+  const targetPos = {};  // trainId → {lon, lat} (posición actual del API)
+  let animStart = 0;     // timestamp del último update
+  let lastUpdateTime = 0;
+  const LERP_MS = 2500;  // transición suave al recibir datos nuevos
+  const POLL_MS = 15000;  // intervalo de polling (debe coincidir con app.js)
   let animFrameId = null;
+  let animRunning = false;
 
   /* Máximo de puntos por ruta: por encima se muestrea uniformemente
    * conservando los extremos. */
@@ -168,24 +171,42 @@ RENFE.Map = (function () {
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
-  function easedT() {
-    if (!animStart) return 1;
-    var raw = Math.min(1, (performance.now() - animStart) / ANIM_MS);
-    return raw < 1 ? raw * (2 - raw) : 1; // easeOutQuad
-  }
+  /** Calcula la posición interpolada/extrapolada de un tren.
+   *  - Los primeros LERP_MS tras un update: lerp suave de prev → target.
+   *  - Después: extrapola la velocidad (target - prev) para que el punto
+   *    siga avanzando hasta el siguiente update. */
+  function livePos(id, now) {
+    var tgt = targetPos[id];
+    var prv = prevPos[id];
+    if (!tgt) return null;
+    if (!prv) return [tgt.lon, tgt.lat];
 
-  function interpolatedPos(id, lon, lat) {
-    var p = prevPos[id];
-    if (!p) return [lon, lat];
-    var t = easedT();
-    if (t >= 1) return [lon, lat];
-    return [lerp(p.lon, lon, t), lerp(p.lat, lat, t)];
+    var elapsed = now - animStart;
+    var dLon = tgt.lon - prv.lon;
+    var dLat = tgt.lat - prv.lat;
+
+    if (elapsed < LERP_MS) {
+      // Fase 1: transición suave prev → target
+      var t = elapsed / LERP_MS;
+      t = t * (2 - t); // easeOutQuad
+      return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
+    }
+    // Fase 2: extrapolar a velocidad constante
+    // Asumimos que prev→target ocurrió en POLL_MS; calcular velocidad/ms
+    if (dLon === 0 && dLat === 0) return [tgt.lon, tgt.lat];
+    var extraMs = elapsed - LERP_MS;
+    var speed = 1 / POLL_MS; // fracción del vector por ms
+    var extra = extraMs * speed;
+    // Limitar extrapolación a 1x la distancia del último update
+    extra = Math.min(extra, 1.0);
+    return [tgt.lon + dLon * extra, tgt.lat + dLat * extra];
   }
 
   function trainsFC() {
+    var now = performance.now();
     const features = [];
     for (const t of lastTrains) {
-      var coords = interpolatedPos(t.id, t.lon, t.lat);
+      var coords = livePos(t.id, now) || [t.lon, t.lat];
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: coords },
@@ -205,17 +226,21 @@ RENFE.Map = (function () {
 
   function animTick() {
     animFrameId = null;
-    if (!overlaysReady || !lastTrains.length) return;
+    if (!overlaysReady || !lastTrains.length) { animRunning = false; return; }
     setSourceData("trains", trainsFC());
-    if (easedT() < 1) {
-      animFrameId = requestAnimationFrame(animTick);
-    }
+    // Seguir animando siempre (extrapolación continua entre polls)
+    animFrameId = requestAnimationFrame(animTick);
+  }
+
+  function ensureAnimRunning() {
+    if (animRunning) return;
+    animRunning = true;
+    animFrameId = requestAnimationFrame(animTick);
   }
 
   function startAnim() {
     animStart = performance.now();
-    if (animFrameId) cancelAnimationFrame(animFrameId);
-    animFrameId = requestAnimationFrame(animTick);
+    ensureAnimRunning();
   }
 
   function selRouteFC() {
@@ -255,6 +280,7 @@ RENFE.Map = (function () {
     setSourceData("selroute", selRouteFC());
     setSourceData("selstops", selStopsFC());
     setSourceData("trains", trainsFC());
+    ensureAnimRunning();
   }
 
   /* ---------- Capas superpuestas ---------- */
