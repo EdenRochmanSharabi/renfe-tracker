@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVE en directo — Trenes de Largo Recorrido</title>
+  <meta name="description" content="Mapa en tiempo real de los trenes AVE y Largo Recorrido de Renfe, con retrasos e histórico.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚄</text></svg>">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div id="boot-overlay" aria-hidden="true">
+    <div class="boot-inner">
+      <div class="boot-logo">🚄</div>
+      <div class="boot-title">AVE <span>EN DIRECTO</span></div>
+      <div class="boot-line">CONECTANDO AL FEED<span class="boot-cursor">▌</span></div>
+    </div>
+  </div>
+
+  <header>
+    <div class="brand">
+      <h1>🚄 AVE <span class="accent">en directo</span></h1>
+      <div class="brand-sub">Sistema de monitorización · Red de alta velocidad</div>
+    </div>
+
+    <div class="status">
+      <span id="status-dot" class="status-dot off"></span>
+      <span id="status-text">Conectando…</span>
+    </div>
+    <span id="last-update" class="mono">—</span>
+    <span id="visible-count" class="mono"></span>
+
+    <div class="filters">
+      <select id="filter-type" aria-label="Filtrar por tipo de tren">
+        <option value="all">Todos los tipos</option>
+        <option value="AVE">AVE</option>
+        <option value="Avlo">Avlo</option>
+        <option value="Alvia">Alvia</option>
+        <option value="Euromed">Euromed</option>
+        <option value="Intercity">Intercity</option>
+        <option value="Avant">Avant</option>
+        <option value="MD">Media Distancia</option>
+      </select>
+      <label class="check">
+        <input type="checkbox" id="filter-delayed"> Solo retrasados
+      </label>
+      <input type="search" id="filter-search" placeholder="Buscar tren o estación…"
+             aria-label="Buscar por número de tren o estación">
+    </div>
+  </header>
+
+  <main>
+    <section id="map-wrap">
+      <div id="map"></div>
+      <div class="map-fx map-scanlines" aria-hidden="true"></div>
+      <div class="map-fx map-grid" aria-hidden="true"></div>
+      <div class="map-fx map-vignette" aria-hidden="true"></div>
+
+      <div class="map-legend hud-corners" aria-hidden="true">
+        <div class="legend-title">Estado de línea</div>
+        <div class="row"><span class="legend-dot ok"></span> En hora</div>
+        <div class="row"><span class="legend-dot warn"></span> Retraso 1–5 min</div>
+        <div class="row"><span class="legend-dot late"></span> Retraso &gt; 5 min</div>
+        <div class="row"><span class="legend-dot station"></span> Estación AVE</div>
+      </div>
+
+      <div id="details" class="hud-corners" role="dialog" aria-label="Detalles del tren">
+        <button id="det-close" aria-label="Cerrar detalles">×</button>
+        <div id="det-title"></div>
+        <div id="det-route"></div>
+        <div id="det-meta"></div>
+        <ul id="det-stops"></ul>
+        <div id="det-history"></div>
+      </div>
+    </section>
+
+    <aside id="panel">
+      <div class="panel-scroll">
+        <div class="stats-grid">
+          <div class="stat hud-corners">
+            <div class="stat-label">Trenes en ruta</div>
+            <div class="stat-value" id="stat-total">—</div>
+          </div>
+          <div class="stat hud-corners">
+            <div class="stat-label">Con retraso</div>
+            <div class="stat-value" id="stat-delayed">—</div>
+          </div>
+          <div class="stat hud-corners">
+            <div class="stat-label">Retraso medio</div>
+            <div class="stat-value" id="stat-avg">—</div>
+          </div>
+          <div class="stat hud-corners">
+            <div class="stat-label">Retraso máximo</div>
+            <div class="stat-value" id="stat-max">—</div>
+          </div>
+        </div>
+
+        <div class="card glow-crit hud-corners">
+          <h2>Peores retrasos ahora</h2>
+          <ul id="worst-list"><li class="empty">Cargando…</li></ul>
+        </div>
+
+        <div class="card glow-accent hud-corners">
+          <h2>
+            Tendencia de retrasos
+            <span id="trend-range">
+              <button data-ms="86400000" class="active">24 h</button>
+              <button data-ms="604800000">7 días</button>
+            </span>
+          </h2>
+          <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+        </div>
+
+        <div class="card glow-good hud-corners">
+          <h2>Distribución actual de retrasos</h2>
+          <div class="chart-box"><canvas id="chart-dist"></canvas></div>
+        </div>
+
+        <div class="card glow-warn hud-corners">
+          <h2>
+            Peores rutas (histórico)
+            <button id="routes-view-toggle" class="link-btn">Ver tabla</button>
+          </h2>
+          <div id="routes-canvas-wrap" class="chart-box tall"><canvas id="chart-routes"></canvas></div>
+          <div id="routes-table-wrap" hidden>
+            <table id="routes-table">
+              <thead>
+                <tr><th>Ruta</th><th>Media (min)</th><th>Máx</th><th>% retraso</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <p id="coverage-note"></p>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <script src="js/stations.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
