@@ -37,6 +37,7 @@ RENFE.Map = (function () {
   // Movimiento sobre la ruta: cada tren se proyecta sobre la polilínea
   // de su ruta y se anima por longitud de arco (siempre sobre la línea).
   const routePolylines = {}; // trainId → {coords, cumDist}
+  const routeDisplayGeom = {}; // trainId → GeoJSON geometry (MultiLineString/LineString)
   const prevArc = {};        // trainId → arco (m) de la posición anterior
   const targetArc = {};      // trainId → arco (m) de la posición actual
   /* Si el GPS del tren cae a más de esta distancia de su ruta, no se
@@ -133,46 +134,49 @@ RENFE.Map = (function () {
     return out;
   }
 
-  /** Añade `seg` a `path` evitando duplicar el punto de unión. */
-  function appendSeg(path, seg) {
-    let start = 0;
-    if (path.length) {
-      const last = path[path.length - 1];
-      const first = seg[0];
-      // ~1e-5° ≈ 1 m: mismo punto de unión → no duplicar.
-      if (Math.abs(last[0] - first[0]) < 1e-5 &&
-          Math.abs(last[1] - first[1]) < 1e-5) start = 1;
-    }
-    for (let j = start; j < seg.length; j++) path.push(seg[j]);
-  }
-
   /**
-   * Geometría híbrida de una ruta completa: encadena los segmentos de
-   * vía real (OSM) entre paradas consecutivas y, donde falte alguno,
-   * empalma el tramo correspondiente de la secuencia GPS del API (o en
-   * último término una recta entre estaciones). Devuelve null si no se
-   * pudo usar ningún segmento OSM (el llamante hará fallback al API).
+   * Geometría de vía real (OSM) de una ruta completa. Devuelve un array
+   * de segmentos continuos (cada uno es un array de [lon,lat]). Donde
+   * falta un tramo OSM se corta en un nuevo segmento — nunca se une con
+   * rectas fantasma. Devuelve null si no hay ningún segmento OSM.
    */
   function hybridPath(route) {
     if (!railSegments || !railAliases) return null;
     const stations = route.stations;
     if (!stations || stations.length < 2) return null;
 
-    const path = [];
+    const segments = [];
+    let current = [];
     let usedRail = false;
+
     for (let i = 0; i < stations.length - 1; i++) {
       const codeA = stations[i].code;
       const codeB = stations[i + 1].code;
       var seg = railSegmentBetween(codeA, codeB);
       if (seg) {
         usedRail = true;
-        appendSeg(path, seg);
+        if (current.length === 0) {
+          for (let j = 0; j < seg.length; j++) current.push(seg[j]);
+        } else {
+          const last = current[current.length - 1];
+          const first = seg[0];
+          if (Math.abs(last[0] - first[0]) < 1e-5 &&
+              Math.abs(last[1] - first[1]) < 1e-5) {
+            for (let j = 1; j < seg.length; j++) current.push(seg[j]);
+          } else {
+            segments.push(current);
+            current = [];
+            for (let j = 0; j < seg.length; j++) current.push(seg[j]);
+          }
+        }
+      } else {
+        if (current.length > 1) segments.push(current);
+        current = [];
       }
-      // Si no hay segmento OSM, NO empalmar la secuencia GPS: crearía
-      // líneas rectas "fantasma" paralelas a la geometría real de otros
-      // trenes en el mismo corredor. Preferimos un hueco limpio.
     }
-    return usedRail && path.length > 1 ? path : null;
+    if (current.length > 1) segments.push(current);
+
+    return usedRail && segments.length > 0 ? segments : null;
   }
 
   /* Colores por estado de retraso. */
@@ -238,56 +242,20 @@ RENFE.Map = (function () {
     return out;
   }
 
-  /** Coordenadas [lon, lat] de una ruta.
-   *  Prioridad: vía real OSM (híbrida con secuencia donde falte) →
-   *  secuencia del API → línea recta entre estaciones. */
-  function coordsFor(route) {
-    // Prioridad 1: geometría de vía real OSM, empalmada con la
-    // secuencia del API en los tramos sin segmento pre-calculado.
-    const rail = hybridPath(route);
-    if (rail) return downsamplePts(rail, MAX_RAIL_POINTS);
-
-    // Prioridad 2: secuencia GPS del API tal cual.
-    let pts;
-    if (route.path && route.path.length > 1) {
-      pts = route.path.map((p) => [p.lon, p.lat]);
-      return downsamplePts(pts, MAX_RAIL_POINTS);
-    } else {
-      pts = [];
-      if (route.stations) {
-        for (const st of route.stations) {
-          const c = RENFE.stationCoords(st.code);
-          if (c) pts.push([c.lon, c.lat]);
-        }
-      }
-    }
-    return downsamplePts(pts, MAX_ROUTE_POINTS);
+  /** Geometría GeoJSON para dibujar una ruta en el mapa.
+   *  Solo usa segmentos OSM reales — sin fallback a GPS ni rectas.
+   *  Devuelve LineString o MultiLineString, o null si no hay datos. */
+  function displayGeometry(route) {
+    const segs = hybridPath(route);
+    if (!segs || segs.length === 0) return null;
+    const ds = segs.map(function (s) { return downsamplePts(s, MAX_RAIL_POINTS); });
+    if (ds.length === 1) return { type: "LineString", coordinates: ds[0] };
+    return { type: "MultiLineString", coordinates: ds };
   }
 
   /* ---------- Polilíneas de ruta con longitud de arco ---------- */
 
   const DEG_M = 111320; // metros por grado de latitud (aprox.)
-
-  /**
-   * Construye la polilínea (con distancias acumuladas en metros) de la
-   * ruta de un tren. Devuelve null si el tren no tiene ruta dibujable.
-   */
-  function buildRoutePolyline(trainId) {
-    const route = lastRoutes[trainId];
-    if (!route) return null;
-    const coords = coordsFor(route);
-    if (!coords || coords.length < 2) return null;
-    const cumDist = new Array(coords.length);
-    cumDist[0] = 0;
-    for (let i = 1; i < coords.length; i++) {
-      const midLat = (coords[i][1] + coords[i - 1][1]) * 0.5;
-      const dx = (coords[i][0] - coords[i - 1][0]) * DEG_M *
-        Math.cos(midLat * Math.PI / 180);
-      const dy = (coords[i][1] - coords[i - 1][1]) * DEG_M;
-      cumDist[i] = cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy);
-    }
-    return { coords: coords, cumDist: cumDist };
-  }
 
   /**
    * Proyecta un punto sobre la polilínea: devuelve {arc, distM} con la
@@ -344,19 +312,60 @@ RENFE.Map = (function () {
   }
 
   /**
-   * (Re)construye la polilínea de la ruta de un tren y proyecta sobre
-   * ella sus posiciones anterior y actual (longitudes de arco). Si el
-   * tren cae demasiado lejos de la ruta, se anula la proyección y el
-   * tren se anima con la posición cruda.
+   * (Re)construye la polilínea y geometría de display de la ruta de un
+   * tren. Para arc-length usa el segmento continuo más largo; para
+   * display guarda todos los segmentos como MultiLineString (sin rectas
+   * fantasma entre huecos). Si el tren cae demasiado lejos de la ruta,
+   * se anula la proyección y se anima con la posición cruda.
    */
   function updateTrainArcs(id) {
-    const poly = buildRoutePolyline(id);
-    if (!poly) {
+    const route = lastRoutes[id];
+    if (!route) {
+      delete routePolylines[id];
+      delete routeDisplayGeom[id];
+      delete prevArc[id];
+      delete targetArc[id];
+      return;
+    }
+
+    const segs = hybridPath(route);
+    if (!segs || segs.length === 0) {
+      delete routePolylines[id];
+      delete routeDisplayGeom[id];
+      delete prevArc[id];
+      delete targetArc[id];
+      return;
+    }
+
+    // Geometría para dibujar: MultiLineString (sin rectas fantasma).
+    const ds = segs.map(function (s) { return downsamplePts(s, MAX_RAIL_POINTS); });
+    routeDisplayGeom[id] = ds.length === 1
+      ? { type: "LineString", coordinates: ds[0] }
+      : { type: "MultiLineString", coordinates: ds };
+
+    // Para arc-length: el segmento continuo más largo.
+    let longest = ds[0];
+    for (let i = 1; i < ds.length; i++) {
+      if (ds[i].length > longest.length) longest = ds[i];
+    }
+    if (longest.length < 2) {
       delete routePolylines[id];
       delete prevArc[id];
       delete targetArc[id];
       return;
     }
+
+    const coords = longest;
+    const cumDist = new Array(coords.length);
+    cumDist[0] = 0;
+    for (let i = 1; i < coords.length; i++) {
+      const midLat = (coords[i][1] + coords[i - 1][1]) * 0.5;
+      const dx = (coords[i][0] - coords[i - 1][0]) * DEG_M *
+        Math.cos(midLat * Math.PI / 180);
+      const dy = (coords[i][1] - coords[i - 1][1]) * DEG_M;
+      cumDist[i] = cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy);
+    }
+    const poly = { coords: coords, cumDist: cumDist };
     routePolylines[id] = poly;
 
     const tgt = targetPos[id];
@@ -402,14 +411,11 @@ RENFE.Map = (function () {
     for (const t of lastTrains) {
       const route = lastRoutes[t.id];
       if (!route) continue;
-      // Reutilizar la polilínea cacheada (misma geometría que el punto
-      // del tren, que se muestrea sobre ella).
-      const poly = routePolylines[t.id];
-      const coords = poly ? poly.coords : coordsFor(route);
-      if (coords.length < 2) continue;
+      const geom = routeDisplayGeom[t.id] || displayGeometry(route);
+      if (!geom) continue;
       features.push({
         type: "Feature",
-        geometry: { type: "LineString", coordinates: coords },
+        geometry: geom,
         properties: {
           id: t.id,
           state: RENFE.delayState(t.delay),
@@ -536,14 +542,14 @@ RENFE.Map = (function () {
 
   function selRouteFC() {
     if (!selectedId || !selRoute) return emptyFC();
-    const coords = coordsFor(selRoute);
-    if (coords.length < 2) return emptyFC();
+    const geom = routeDisplayGeom[selectedId] || displayGeometry(selRoute);
+    if (!geom) return emptyFC();
     const train = lastTrains.find((t) => t.id === selectedId);
     return {
       type: "FeatureCollection",
       features: [{
         type: "Feature",
-        geometry: { type: "LineString", coordinates: coords },
+        geometry: geom,
         properties: { state: train ? RENFE.delayState(train.delay) : "ok" },
       }],
     };
@@ -888,6 +894,7 @@ RENFE.Map = (function () {
         delete targetPos[id];
         delete prevPos[id];
         delete routePolylines[id];
+        delete routeDisplayGeom[id];
         delete prevArc[id];
         delete targetArc[id];
       }
