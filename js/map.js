@@ -528,22 +528,33 @@ RENFE.Map = (function () {
   function lerp(a, b, t) { return a + (b - a) * t; }
 
   /** Posición interpolada de un tren: lerp lineal de prev a target
-   *  durante todo el intervalo de polling (30s). Sin extrapolación —
-   *  al llegar a target, se mantiene ahí hasta el siguiente poll.
-   *  Si el salto es irrazonable (>480 km/h), teleporta directamente. */
+   *  durante todo el intervalo de polling (30s), luego extrapolación
+   *  suave a la misma velocidad (máx 50% del salto) para dar
+   *  continuidad visual. Teleporta si el salto es irrazonable. */
   function livePos(id, now) {
     var elapsed = now - animStart;
     var t = elapsed / POLL_MS;
     if (t < 0) t = 0;
-    if (t > 1) t = 1;
 
     var poly = routePolylines[id];
     var tArc = targetArc[id];
     if (poly && tArc !== undefined) {
       var pArc = prevArc[id];
       if (pArc === undefined) pArc = tArc;
-      if (Math.abs(tArc - pArc) > MAX_ARC_JUMP_M) return samplePolyline(poly, tArc);
-      var arc = pArc + (tArc - pArc) * t;
+      var jump = tArc - pArc;
+      if (Math.abs(jump) > MAX_ARC_JUMP_M) return samplePolyline(poly, tArc);
+      var arc;
+      if (t <= 1) {
+        arc = pArc + jump * t;
+      } else if (jump !== 0) {
+        var extra = (t - 1) * jump;
+        var cap = Math.abs(jump) * 0.5;
+        if (extra > cap) extra = cap;
+        else if (extra < -cap) extra = -cap;
+        arc = tArc + extra;
+      } else {
+        arc = tArc;
+      }
       var total = poly.cumDist[poly.cumDist.length - 1];
       if (arc < 0) arc = 0;
       else if (arc > total) arc = total;
@@ -554,6 +565,7 @@ RENFE.Map = (function () {
     var prv = prevPos[id];
     if (!tgt) return null;
     if (!prv) return [tgt.lon, tgt.lat];
+    if (t > 1.5) t = 1.5;
     return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
   }
 
@@ -943,11 +955,9 @@ RENFE.Map = (function () {
       if (!inSpain(t.lon, t.lat)) continue;
       seen[t.id] = true;
       var prev = targetPos[t.id];
-      if (prev && (prev.lon !== t.lon || prev.lat !== t.lat)) {
-        prevPos[t.id] = { lon: prev.lon, lat: prev.lat };
-      } else if (!prev) {
-        prevPos[t.id] = { lon: t.lon, lat: t.lat };
-      }
+      prevPos[t.id] = prev
+        ? { lon: prev.lon, lat: prev.lat }
+        : { lon: t.lon, lat: t.lat };
       targetPos[t.id] = { lon: t.lon, lat: t.lat };
       // Proyectar posiciones sobre la polilínea de la ruta (arcos).
       updateTrainArcs(t.id);
