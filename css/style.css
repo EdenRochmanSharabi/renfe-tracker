@@ -234,6 +234,20 @@ main {
   filter: invert(1) hue-rotate(195deg) brightness(0.45) contrast(1.05) saturate(0.5);
 }
 
+/* Zoom continuo estilo Google Maps: dejar que las animaciones nativas de
+ * Leaflet (fade de teselas y zoom con transform) trabajen sin conflictos.
+ * Las teselas hacen crossfade a nivel de contenedor y cada capa animada
+ * por zoom transiciona su transform de forma uniforme. */
+.leaflet-tile-container {
+  transition: opacity 0.3s linear;
+}
+.leaflet-fade-anim .leaflet-tile {
+  will-change: opacity;
+}
+.leaflet-zoom-anim .leaflet-zoom-animated {
+  transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1) !important;
+}
+
 /* Capas de efecto sobre el mapa (no interactivas). Se promocionan a su
  * propia capa de composición y se ocultan mientras el mapa se mueve o
  * hace zoom para no forzar repintados del compositor. */
@@ -396,14 +410,14 @@ main {
   header, #map-wrap, aside { animation: none; }
 }
 
-/* Movimiento suave de marcadores al refrescar posiciones
- * (desactivado durante animaciones de zoom para no "patinar") */
+/* Movimiento suave de marcadores al refrescar posiciones.
+ * Solo activo cuando NO hay zoom/pan en curso (la clase "moving"
+ * se añade en map.js durante movestart/zoomstart). */
 .leaflet-marker-icon.train-move {
-  transition: transform 1.2s linear;
-}
-.leaflet-zoom-anim .leaflet-marker-icon.train-move,
-.leaflet-container.moving .leaflet-marker-icon.train-move {
   transition: none;
+}
+.leaflet-container:not(.moving):not(.leaflet-zoom-anim) .leaflet-marker-icon.train-move {
+  transition: transform 0.8s linear;
 }
 
 /* Pausar las animaciones de pulso mientras el mapa se mueve: cientos de
