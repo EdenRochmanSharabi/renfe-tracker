@@ -43,7 +43,7 @@ RENFE.Map = (function () {
 
   /* Máximo de puntos por ruta: por encima se muestrea uniformemente
    * conservando los extremos. */
-  const MAX_ROUTE_POINTS = 50;
+  const MAX_ROUTE_POINTS = 200;
 
   /* Colores por estado de retraso. */
   const STATE_CORE = ["match", ["get", "state"],
