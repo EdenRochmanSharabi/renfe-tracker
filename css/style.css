@@ -229,57 +229,12 @@ main {
 #map-wrap { position: relative; height: 100vh; height: 100svh; overflow: hidden; }
 #map { position: absolute; inset: 0; background: var(--bg); }
 
-/* Teselas OSM: inversión profunda + tono azul → pantalla de radar */
-.osm-dark-tiles {
-  filter: invert(1) hue-rotate(195deg) brightness(0.45) contrast(1.05) saturate(0.5);
-}
-
-/* Zoom continuo estilo Google Maps: dejar que las animaciones nativas de
- * Leaflet (fade de teselas y zoom con transform) trabajen sin conflictos.
- * Las teselas hacen crossfade a nivel de contenedor y cada capa animada
- * por zoom transiciona su transform de forma uniforme. */
-.leaflet-tile-container {
-  transition: opacity 0.3s linear;
-}
-.leaflet-fade-anim .leaflet-tile {
-  will-change: opacity;
-}
-.leaflet-zoom-anim .leaflet-zoom-animated {
-  transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1) !important;
-}
-
-/* Capas de efecto sobre el mapa (no interactivas). Se promocionan a su
- * propia capa de composición y se ocultan mientras el mapa se mueve o
- * hace zoom para no forzar repintados del compositor. */
+/* Capa de efecto sobre el mapa (no interactiva). */
 .map-fx {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 600;
-  will-change: opacity;
-  transition: opacity 0.25s ease;
-}
-#map.moving ~ .map-scanlines,
-#map.leaflet-zoom-anim ~ .map-scanlines,
-#map.moving ~ .map-grid,
-#map.leaflet-zoom-anim ~ .map-grid {
-  opacity: 0;
-}
-.map-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(56, 189, 248, 0.022) 0px,
-    rgba(56, 189, 248, 0.022) 1px,
-    transparent 1px,
-    transparent 4px
-  );
-  mix-blend-mode: screen;
-}
-.map-grid {
-  background:
-    linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
-  background-size: 90px 90px;
 }
 .map-vignette {
   background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 55%, rgba(2, 5, 10, 0.55) 100%);
@@ -345,126 +300,75 @@ main {
   width: 8px; height: 8px;
 }
 
-/* Marcadores de estación (divIcon) */
-.station-icon-wrap { background: none; border: none; }
-.station-icon {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #0f1f38;
-  border: 1.5px solid rgba(56, 189, 248, 0.75);
-  box-shadow: 0 0 6px rgba(56, 189, 248, 0.4), 0 0 14px rgba(56, 189, 248, 0.15);
-}
-
-/* Marcadores de tren */
-.train-icon-wrap { background: none; border: none; }
-.train-icon {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(4, 8, 15, 0.9);
-  margin: 3px;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
-}
-.train-icon:hover { transform: scale(1.45); }
-.train-icon.s-ok {
-  background: var(--good);
-  box-shadow: 0 0 6px var(--good-glow), 0 0 14px var(--good-glow);
-}
-.train-icon.s-warn {
-  background: var(--warn);
-  box-shadow: 0 0 6px var(--warn-glow), 0 0 14px var(--warn-glow);
-  animation: pulse-warn 2.2s ease-out infinite;
-}
-.train-icon.s-late {
-  background: var(--crit);
-  box-shadow: 0 0 7px var(--crit-glow), 0 0 16px var(--crit-glow);
-  animation: pulse-crit 1.6s ease-out infinite;
-}
-.train-icon.selected {
-  border-color: #fff;
-  box-shadow:
-    0 0 0 2px rgba(224, 231, 255, 0.9),
-    0 0 0 5px rgba(56, 189, 248, 0.35),
-    0 0 16px var(--accent-glow),
-    0 0 30px var(--accent-glow);
-  animation: none;
-  transform: scale(1.25);
-}
-
-@keyframes pulse-crit {
-  0%   { box-shadow: 0 0 7px var(--crit-glow), 0 0 0 0 rgba(239, 68, 68, 0.55); }
-  70%  { box-shadow: 0 0 7px var(--crit-glow), 0 0 0 12px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 7px var(--crit-glow), 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-@keyframes pulse-warn {
-  0%   { box-shadow: 0 0 6px var(--warn-glow), 0 0 0 0 rgba(245, 158, 11, 0.4); }
-  70%  { box-shadow: 0 0 6px var(--warn-glow), 0 0 0 9px rgba(245, 158, 11, 0); }
-  100% { box-shadow: 0 0 6px var(--warn-glow), 0 0 0 0 rgba(245, 158, 11, 0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .train-icon.s-late, .train-icon.s-warn,
   .status-dot.on, .status-dot.warn,
   .boot-line { animation: none; }
   header, #map-wrap, aside { animation: none; }
 }
 
-/* Movimiento suave de marcadores al refrescar posiciones.
- * Solo activo cuando NO hay zoom/pan en curso (la clase "moving"
- * se añade en map.js durante movestart/zoomstart). */
-.leaflet-marker-icon.train-move {
-  transition: none;
-}
-.leaflet-container:not(.moving):not(.leaflet-zoom-anim) .leaflet-marker-icon.train-move {
-  transition: transform 0.8s linear;
-}
-
-/* Pausar las animaciones de pulso mientras el mapa se mueve: cientos de
- * sombras animadas repintándose durante el zoom producen tirones. */
-.leaflet-container.moving .train-icon,
-.leaflet-zoom-anim .train-icon {
-  animation-play-state: paused;
-}
-
-/* Tooltips Leaflet estilo HUD */
-.leaflet-tooltip.train-tip,
-.leaflet-tooltip.station-tip {
+/* ---------- MapLibre: popups y controles estilo HUD ---------- */
+.maplibregl-popup-content {
   background: rgba(10, 22, 40, 0.95);
   color: var(--text);
   border: 1px solid var(--border-glow);
   border-radius: 6px;
   box-shadow: 0 0 18px rgba(56, 189, 248, 0.15), 0 4px 14px rgba(0, 0, 0, 0.5);
-  font-size: 12px;
   font-family: var(--mono);
-  padding: 7px 10px;
+  font-size: 12px;
+  padding: 8px 12px;
 }
-.leaflet-tooltip.train-tip .tip-title {
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: rgba(10, 22, 40, 0.95);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: rgba(10, 22, 40, 0.95);
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: rgba(10, 22, 40, 0.95);
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: rgba(10, 22, 40, 0.95);
+}
+.maplibregl-popup .tip-title {
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.5px;
 }
-.leaflet-tooltip.train-tip .tip-delay-ok { color: var(--good); }
-.leaflet-tooltip.train-tip .tip-delay-warn { color: var(--warn); }
-.leaflet-tooltip.train-tip .tip-delay-late { color: var(--crit); }
-.leaflet-tooltip.train-tip::before,
-.leaflet-tooltip.station-tip::before { display: none; }
+.maplibregl-popup .tip-delay-ok { color: var(--good); }
+.maplibregl-popup .tip-delay-warn { color: var(--warn); }
+.maplibregl-popup .tip-delay-late { color: var(--crit); }
 
-.leaflet-container { font: inherit; }
-.leaflet-control-zoom a {
+.maplibregl-ctrl-group {
   background: rgba(15, 31, 56, 0.9) !important;
-  color: var(--text) !important;
-  border-color: var(--border-glow) !important;
+  border: 1px solid var(--border-glow);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.10) !important;
 }
-.leaflet-control-zoom a:hover {
-  color: var(--accent) !important;
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  border-color: var(--border) !important;
 }
-.leaflet-control-attribution {
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--border) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+.maplibregl-ctrl-group button:hover {
+  background: rgba(56, 189, 248, 0.12) !important;
+}
+.maplibregl-ctrl-attrib {
   background: rgba(10, 22, 40, 0.8) !important;
   color: var(--muted) !important;
   font-size: 10px !important;
 }
-.leaflet-control-attribution a { color: var(--text-2) !important; }
+.maplibregl-ctrl-attrib a { color: var(--text-2) !important; }
+.maplibregl-ctrl-attrib-button {
+  background-color: rgba(15, 31, 56, 0.9) !important;
+}
 
 /* ---------- Panel de datos (debajo del mapa, scroll de página) ---------- */
 aside {

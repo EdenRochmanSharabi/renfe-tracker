@@ -1,7 +1,13 @@
 /* ===========================================================
- * map.js — Mapa Leaflet: teselas oscuras estilo radar,
- * estaciones con halo, rutas siempre visibles con efecto de
- * resplandor (3 polilíneas superpuestas) y trenes luminosos.
+ * map.js — Mapa MapLibre GL: teselas vectoriales renderizadas
+ * en GPU (zoom continuo y fluido), tema oscuro de centro de
+ * mando definido en el propio estilo, rutas con resplandor
+ * (line-blur) y trenes como capas de círculos data-driven.
+ *
+ * API pública (idéntica a la versión Leaflet):
+ *   init(containerId, clickHandler)
+ *   updateTrains(trains, routes)
+ *   selectTrain(id, train, route)
  * =========================================================== */
 "use strict";
 
@@ -9,142 +15,136 @@ window.RENFE = window.RENFE || {};
 
 RENFE.Map = (function () {
   let map = null;
-  let trainLayer = null;
-  let stationLayer = null;
-  let routeLayer = null;     // rutas siempre visibles (todas)
-  let selStopsLayer = null;  // paradas de la ruta seleccionada
-  let routeRenderer = null;  // canvas compartido: cientos de trazos sin coste DOM
-
-  const markers = {};    // trainId → L.Marker
-  const routeLines = {}; // trainId → { layers:[outer,mid,core], state, geomKey }
   let onTrainClick = null;
   let selectedId = null;
 
-  /* Colores de ruta por estado de retraso: halo ancho + núcleo brillante. */
-  const ROUTE_COLORS = {
-    ok:   { glow: "rgba(16, 185, 129, 1)",  core: "#34d399" },
-    warn: { glow: "rgba(245, 158, 11, 1)",  core: "#fbbf24" },
-    late: { glow: "rgba(239, 68, 68, 1)",   core: "#f87171" },
-  };
+  // Último estado recibido: permite repoblar las fuentes tras un
+  // cambio de estilo (fallback) o al cambiar la selección.
+  let lastTrains = [];
+  let lastRoutes = {};
+  // Ruta del tren seleccionado (puede venir de selectTrain aunque el
+  // tren esté filtrado y no aparezca en lastRoutes).
+  let selRoute = null;
 
-  /* Máximo de puntos por polilínea: por encima se muestrea uniformemente
+  let overlaysReady = false;   // fuentes/capas superpuestas añadidas
+  let handlersBound = false;   // eventos delegados registrados
+  let usedFallback = false;    // ya se cambió al estilo raster
+  let styleEverLoaded = false; // el estilo vectorial llegó a cargar
+
+  /* Máximo de puntos por ruta: por encima se muestrea uniformemente
    * conservando los extremos. */
   const MAX_ROUTE_POINTS = 50;
 
-  function init(containerId, clickHandler) {
-    onTrainClick = clickHandler;
+  /* Colores por estado de retraso. */
+  const STATE_CORE = ["match", ["get", "state"],
+    "ok", "#34d399", "warn", "#fbbf24", "late", "#f87171", "#34d399"];
+  const STATE_GLOW = ["match", ["get", "state"],
+    "ok", "rgba(16,185,129,0.9)", "warn", "rgba(245,158,11,0.9)",
+    "late", "rgba(239,68,68,0.9)", "rgba(16,185,129,0.9)"];
+  const STATE_DOT = ["match", ["get", "state"],
+    "ok", "#10b981", "warn", "#f59e0b", "late", "#ef4444", "#10b981"];
+  const STATE_DOT_GLOW = ["match", ["get", "state"],
+    "ok", "rgba(16,185,129,0.45)", "warn", "rgba(245,158,11,0.45)",
+    "late", "rgba(239,68,68,0.45)", "rgba(16,185,129,0.45)"];
 
-    map = L.map(containerId, {
-      center: [40.2, -3.7],
-      zoom: 6,
-      minZoom: 5,
-      maxZoom: 14,
-      zoomControl: false,
-      attributionControl: true,
-      // Zoom continuo estilo Google Maps: cualquier nivel fraccionario,
-      // pasos de rueda pequeños y animación nativa de Leaflet siempre activa.
-      zoomSnap: 0,
-      zoomDelta: 0.25,
-      wheelDebounceTime: 40,
-      wheelPxPerZoomLevel: 180,
-      zoomAnimation: true,
-      zoomAnimationThreshold: 4,
-      fadeAnimation: true,
-      markerZoomAnimation: true,
-    });
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-    map.setMaxBounds([[34.0, -12.5], [45.5, 6.5]]);
+  /* ---------- Estilos base ---------- */
 
-    // Teselas OpenStreetMap oscurecidas vía filtro CSS (clase osm-dark-tiles):
-    // sin claves de API y con estética de pantalla de radar.
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-      maxNativeZoom: 19,
-      className: "osm-dark-tiles",
-      updateWhenZooming: false, // no recargar teselas en mitad del zoom
-      updateWhenIdle: true,     // cargar solo al terminar la animación
-      keepBuffer: 6,            // teselas extra alrededor para pan suave
-    }).addTo(map);
+  /** Estilo vectorial oscuro sobre OpenFreeMap (gratuito, sin clave):
+   *  teselas vectoriales → zoom continuo renderizado en GPU. */
+  const VECTOR_STYLE = {
+    version: 8,
+    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+    sources: {
+      openmaptiles: {
+        type: "vector",
+        url: "https://tiles.openfreemap.org/planet",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; OpenMapTiles',
+      },
+    },
+    layers: [
+      { id: "background", type: "background",
+        paint: { "background-color": "#04080f" } },
+      { id: "water", type: "fill", source: "openmaptiles",
+        "source-layer": "water",
+        paint: { "fill-color": "#0a1628" } },
+      { id: "waterway", type: "line", source: "openmaptiles",
+        "source-layer": "waterway",
+        paint: { "line-color": "rgba(10, 22, 40, 0.9)", "line-width": 1 } },
+      { id: "boundary", type: "line", source: "openmaptiles",
+        "source-layer": "boundary",
+        filter: ["<=", ["get", "admin_level"], 4],
+        paint: {
+          "line-color": "rgba(56, 189, 248, 0.16)",
+          "line-width": 1,
+        } },
+      { id: "rail", type: "line", source: "openmaptiles",
+        "source-layer": "transportation",
+        filter: ["==", ["get", "class"], "rail"],
+        paint: {
+          "line-color": "rgba(56, 189, 248, 0.10)",
+          "line-width": 0.6,
+        } },
+      { id: "roads", type: "line", source: "openmaptiles",
+        "source-layer": "transportation",
+        filter: ["in", ["get", "class"], ["literal", ["motorway", "trunk", "primary"]]],
+        paint: {
+          "line-color": "rgba(56, 189, 248, 0.06)",
+          "line-width": 0.5,
+        } },
+      { id: "places", type: "symbol", source: "openmaptiles",
+        "source-layer": "place",
+        filter: ["in", ["get", "class"], ["literal", ["city", "town"]]],
+        layout: {
+          "text-field": "{name}",
+          "text-font": ["Noto Sans Regular"],
+          "text-size": ["step", ["zoom"], 11, 8, 12],
+          "text-max-width": 8,
+        },
+        paint: {
+          "text-color": "rgba(123, 139, 168, 0.85)",
+          "text-halo-color": "#04080f",
+          "text-halo-width": 1.2,
+        } },
+    ],
+  };
 
-    // Todas las rutas comparten un único renderer canvas: dibujar ~300
-    // polilíneas como SVG individual arrastraría el DOM.
-    routeRenderer = L.canvas({ padding: 0.5 });
+  /** Fallback: teselas raster OSM oscurecidas en la propia GPU
+   *  (raster-* paint). Menos fluido que vector, pero sin dependencias. */
+  const RASTER_STYLE = {
+    version: 8,
+    sources: {
+      "osm-raster": {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      },
+    },
+    layers: [
+      { id: "background", type: "background",
+        paint: { "background-color": "#04080f" } },
+      { id: "osm-tiles", type: "raster", source: "osm-raster",
+        paint: {
+          "raster-brightness-max": 0.3,
+          "raster-brightness-min": 0.0,
+          "raster-saturation": -0.7,
+          "raster-contrast": 0.3,
+          "raster-hue-rotate": 195,
+        } },
+    ],
+  };
 
-    routeLayer = L.layerGroup().addTo(map);
-    selStopsLayer = L.layerGroup().addTo(map);
-    stationLayer = L.layerGroup().addTo(map);
-    trainLayer = L.layerGroup().addTo(map);
+  /* ---------- Utilidades ---------- */
 
-    drawStations();
-
-    map.on("click", () => {
-      if (onTrainClick) onTrainClick(null);
-    });
-
-    // Clase "moving" en el contenedor mientras el mapa se desplaza o hace
-    // zoom: el CSS la usa para desactivar transiciones de marcadores,
-    // pausar pulsos y ocultar las capas de efecto (scanlines/rejilla).
-    const container = map.getContainer();
-    map.on("zoomstart movestart", () => container.classList.add("moving"));
-    map.on("zoomend moveend", () => container.classList.remove("moving"));
-
-    return map;
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
-  function drawStations() {
-    const icon = L.divIcon({
-      className: "station-icon-wrap",
-      html: '<div class="station-icon"></div>',
-      iconSize: [10, 10],
-      iconAnchor: [5, 5],
-    });
-    for (const code in RENFE.AVE_STATIONS) {
-      const s = RENFE.AVE_STATIONS[code];
-      const m = L.marker([s.lat, s.lon], { icon: icon, keyboard: false });
-      m.bindTooltip(s.name, { direction: "top", offset: [0, -8], className: "station-tip" });
-      m.addTo(stationLayer);
-    }
-  }
-
-  /* ---------- Marcadores de tren ---------- */
-
-  function iconFor(train, isSelected) {
-    const state = RENFE.delayState(train.delay); // ok | warn | late
-    const sel = isSelected ? " selected" : "";
-    return L.divIcon({
-      // train-move activa la transición CSS de transform → movimiento suave.
-      className: "train-icon-wrap train-move",
-      html: '<div class="train-icon s-' + state + sel + '"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
-  }
-
-  /** Reasigna el icono solo si el estado visual cambió: setIcon recrea el
-   *  nodo DOM y cortaría la transición suave de posición. */
-  function refreshIcon(m, train, isSelected) {
-    const key = RENFE.delayState(train.delay) + (isSelected ? ":sel" : "");
-    if (m._iconKey !== key) {
-      m.setIcon(iconFor(train, isSelected));
-      m._iconKey = key;
-    }
-  }
-
-  function tooltipHtml(t) {
-    const state = RENFE.delayState(t.delay);
-    return (
-      '<div class="tip-title">' + t.type + " " + t.number + "</div>" +
-      RENFE.routeLabel(t.origin, t.destination) + "<br>" +
-      '<span class="tip-delay-' + state + '">' + RENFE.delayLabel(t.delay) + "</span>"
-    );
-  }
-
-  /* ---------- Rutas siempre visibles ---------- */
-
-  /** Muestreo uniforme conservando extremos: rutas con cientos de puntos
-   *  no aportan detalle visible y encarecen cada redibujado del canvas. */
+  /** Muestreo uniforme conservando extremos. */
   function downsamplePts(pts, maxPts) {
     if (pts.length <= maxPts) return pts;
     const out = [];
@@ -153,223 +153,390 @@ RENFE.Map = (function () {
     return out;
   }
 
-  function latlngsFor(route) {
+  /** Coordenadas [lon, lat] de una ruta (path real o estaciones). */
+  function coordsFor(route) {
     let pts;
     if (route.path && route.path.length > 1) {
-      pts = route.path.map((p) => [p.lat, p.lon]);
+      pts = route.path.map((p) => [p.lon, p.lat]);
     } else {
       pts = [];
       if (route.stations) {
         for (const st of route.stations) {
           const c = RENFE.stationCoords(st.code);
-          if (c) pts.push([c.lat, c.lon]);
+          if (c) pts.push([c.lon, c.lat]);
         }
       }
     }
     return downsamplePts(pts, MAX_ROUTE_POINTS);
   }
 
-  /**
-   * Especifica las capas de una ruta según estado y modo. Menos polilíneas
-   * = zoom más fluido: los trenes en hora llevan una sola línea fina, los
-   * retrasados halo + núcleo, y solo el seleccionado el resplandor
-   * completo de 3 capas.
-   */
-  function layerSpecs(state, mode) {
-    const colors = ROUTE_COLORS[state] || ROUTE_COLORS.ok;
-    if (mode === "hi") {
-      return [
-        { color: colors.glow, weight: 13,  opacity: 0.22 },
-        { color: colors.glow, weight: 6.5, opacity: 0.48 },
-        { color: colors.core, weight: 3,   opacity: 1.0 },
-      ];
-    }
-    const dim = mode === "dim";
-    if (state === "ok") {
-      return [{ color: colors.core, weight: 2, opacity: dim ? 0.10 : 0.55 }];
-    }
-    return [
-      { color: colors.glow, weight: 4.5, opacity: dim ? 0.08 : 0.25 },
-      { color: colors.core, weight: 2,   opacity: dim ? 0.20 : 0.85 },
-    ];
+  function emptyFC() {
+    return { type: "FeatureCollection", features: [] };
   }
 
-  function modeFor(id) {
-    if (!selectedId) return "base";
-    return id === selectedId ? "hi" : "dim";
+  function setSourceData(id, data) {
+    const src = map.getSource(id);
+    if (src) src.setData(data);
   }
 
-  /** (Re)construye las polilíneas de una ruta según su spec actual. */
-  function buildLayers(rl) {
-    const specs = layerSpecs(rl.state, rl.mode);
-    for (const layer of rl.layers) routeLayer.removeLayer(layer);
-    rl.layers = specs.map((s) =>
-      L.polyline(rl.latlngs, {
-        renderer: routeRenderer,
-        interactive: false,
-        lineCap: "round",
-        lineJoin: "round",
-        color: s.color,
-        weight: s.weight,
-        opacity: s.opacity,
-      }).addTo(routeLayer)
+  /* ---------- GeoJSON de cada fuente ---------- */
+
+  function stationsFC() {
+    const features = [];
+    for (const code in RENFE.AVE_STATIONS) {
+      const s = RENFE.AVE_STATIONS[code];
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+        properties: { name: s.name },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }
+
+  function routesFC() {
+    const features = [];
+    for (const t of lastTrains) {
+      const route = lastRoutes[t.id];
+      if (!route) continue;
+      const coords = coordsFor(route);
+      if (coords.length < 2) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: {
+          id: t.id,
+          state: RENFE.delayState(t.delay),
+          dimmed: !!(selectedId && t.id !== selectedId),
+        },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }
+
+  function trainsFC() {
+    const features = [];
+    for (const t of lastTrains) {
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [t.lon, t.lat] },
+        properties: {
+          id: t.id,
+          state: RENFE.delayState(t.delay),
+          selected: t.id === selectedId,
+          type: t.type,
+          number: t.number,
+          route: RENFE.routeLabel(t.origin, t.destination),
+          delayLabel: RENFE.delayLabel(t.delay),
+        },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }
+
+  function selRouteFC() {
+    if (!selectedId || !selRoute) return emptyFC();
+    const coords = coordsFor(selRoute);
+    if (coords.length < 2) return emptyFC();
+    const train = lastTrains.find((t) => t.id === selectedId);
+    return {
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: { state: train ? RENFE.delayState(train.delay) : "ok" },
+      }],
+    };
+  }
+
+  function selStopsFC() {
+    if (!selectedId || !selRoute || !selRoute.stations) return emptyFC();
+    const features = [];
+    for (const st of selRoute.stations) {
+      const c = RENFE.stationCoords(st.code);
+      if (!c) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [c.lon, c.lat] },
+        properties: { name: RENFE.stationName(st.code) },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }
+
+  /** Vuelca el estado actual a todas las fuentes superpuestas. */
+  function refreshAll() {
+    if (!overlaysReady) return;
+    setSourceData("routes", routesFC());
+    setSourceData("selroute", selRouteFC());
+    setSourceData("selstops", selStopsFC());
+    setSourceData("trains", trainsFC());
+  }
+
+  /* ---------- Capas superpuestas ---------- */
+
+  /** Añade fuentes y capas propias sobre el estilo base actual.
+   *  Se invoca en cada style.load (también tras el fallback). */
+  function addOverlays() {
+    map.addSource("routes", { type: "geojson", data: emptyFC() });
+    map.addSource("selroute", { type: "geojson", data: emptyFC() });
+    map.addSource("stations", { type: "geojson", data: stationsFC() });
+    map.addSource("selstops", { type: "geojson", data: emptyFC() });
+    map.addSource("trains", { type: "geojson", data: emptyFC() });
+
+    // Rutas de todos los trenes: halo difuso + núcleo.
+    map.addLayer({
+      id: "routes-glow", type: "line", source: "routes",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": STATE_GLOW,
+        "line-width": 6,
+        "line-blur": 3,
+        "line-opacity": ["case", ["get", "dimmed"], 0.03,
+          ["match", ["get", "state"], "ok", 0.10, "warn", 0.28, "late", 0.30, 0.10]],
+      },
+    });
+    map.addLayer({
+      id: "routes-core", type: "line", source: "routes",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": STATE_CORE,
+        "line-width": 2,
+        "line-opacity": ["case", ["get", "dimmed"], 0.12,
+          ["match", ["get", "state"], "ok", 0.55, "warn", 0.85, "late", 0.9, 0.55]],
+      },
+    });
+
+    // Ruta seleccionada: resplandor completo en 3 capas.
+    map.addLayer({
+      id: "selroute-outer", type: "line", source: "selroute",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": STATE_GLOW,
+        "line-width": 13,
+        "line-blur": 6,
+        "line-opacity": 0.3,
+      },
+    });
+    map.addLayer({
+      id: "selroute-mid", type: "line", source: "selroute",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": STATE_GLOW,
+        "line-width": 6.5,
+        "line-blur": 2,
+        "line-opacity": 0.5,
+      },
+    });
+    map.addLayer({
+      id: "selroute-core", type: "line", source: "selroute",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": STATE_CORE,
+        "line-width": 3,
+        "line-opacity": 1.0,
+      },
+    });
+
+    // Estaciones AVE: halo + punto.
+    map.addLayer({
+      id: "stations-glow", type: "circle", source: "stations",
+      paint: {
+        "circle-radius": 6,
+        "circle-color": "rgba(56, 189, 248, 0.2)",
+        "circle-blur": 0.8,
+      },
+    });
+    map.addLayer({
+      id: "stations-dot", type: "circle", source: "stations",
+      paint: {
+        "circle-radius": 3,
+        "circle-color": "#0f1f38",
+        "circle-stroke-color": "rgba(56, 189, 248, 0.75)",
+        "circle-stroke-width": 1.5,
+      },
+    });
+
+    // Paradas de la ruta seleccionada.
+    map.addLayer({
+      id: "selstops-dot", type: "circle", source: "selstops",
+      paint: {
+        "circle-radius": 4.5,
+        "circle-color": "#04080f",
+        "circle-stroke-color": "#38bdf8",
+        "circle-stroke-width": 2,
+      },
+    });
+
+    // Trenes: halo difuso + punto nítido, tamaño mayor si seleccionado.
+    map.addLayer({
+      id: "trains-glow", type: "circle", source: "trains",
+      paint: {
+        "circle-radius": ["case", ["get", "selected"], 12, 8],
+        "circle-color": STATE_DOT_GLOW,
+        "circle-blur": 0.6,
+      },
+    });
+    map.addLayer({
+      id: "trains-dot", type: "circle", source: "trains",
+      paint: {
+        "circle-radius": ["case", ["get", "selected"], 7, 5],
+        "circle-color": STATE_DOT,
+        "circle-stroke-color": ["case", ["get", "selected"],
+          "#ffffff", "rgba(4,8,15,0.9)"],
+        "circle-stroke-width": ["case", ["get", "selected"], 2, 1.5],
+      },
+    });
+
+    overlaysReady = true;
+  }
+
+  /* ---------- Interacción ---------- */
+
+  function trainPopupHtml(props) {
+    return (
+      '<div class="tip-title">' + escapeHtml(props.type) + " " +
+      escapeHtml(props.number) + "</div>" +
+      escapeHtml(props.route) + "<br>" +
+      '<span class="tip-delay-' + escapeHtml(props.state) + '">' +
+      escapeHtml(props.delayLabel) + "</span>"
     );
   }
 
-  function applyRouteStyle(id) {
-    const rl = routeLines[id];
-    if (!rl) return;
-    const mode = modeFor(id);
-    const specs = layerSpecs(rl.state, mode);
-    if (specs.length !== rl.layers.length) {
-      rl.mode = mode;
-      buildLayers(rl);
-    } else {
-      rl.mode = mode;
-      for (let i = 0; i < specs.length; i++) rl.layers[i].setStyle(specs[i]);
-    }
-    if (mode === "hi") {
-      for (const layer of rl.layers) layer.bringToFront();
-    }
-  }
+  function bindHandlers() {
+    if (handlersBound) return;
+    handlersBound = true;
 
-  function restyleAllRoutes() {
-    for (const id in routeLines) applyRouteStyle(id);
-  }
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      className: "train-popup",
+      offset: 12,
+    });
 
-  function removeRouteLine(id) {
-    const rl = routeLines[id];
-    if (!rl) return;
-    for (const layer of rl.layers) routeLayer.removeLayer(layer);
-    delete routeLines[id];
-  }
-
-  /** Crea o actualiza la ruta luminosa de un tren. Redibuja solo si cambió
-   *  la geometría; un cambio de estado de retraso es solo re-estilo. */
-  function ensureRouteLine(train, route) {
-    const latlngs = latlngsFor(route);
-    if (latlngs.length < 2) return;
-    const state = RENFE.delayState(train.delay);
-    const geomKey =
-      latlngs.length + ":" +
-      latlngs[0][0].toFixed(3) + ":" +
-      latlngs[latlngs.length - 1][0].toFixed(3);
-
-    let rl = routeLines[train.id];
-    if (rl && rl.geomKey === geomKey) {
-      if (rl.state !== state) {
-        rl.state = state;
-        applyRouteStyle(train.id);
+    // Clic: tren bajo el cursor → seleccionar; fondo → deseleccionar.
+    map.on("click", (e) => {
+      if (!onTrainClick) return;
+      let hit = null;
+      if (map.getLayer("trains-dot")) {
+        const feats = map.queryRenderedFeatures(e.point, {
+          layers: ["trains-dot", "trains-glow"],
+        });
+        if (feats.length) hit = feats[0].properties.id;
       }
-      return;
-    }
-    if (rl) removeRouteLine(train.id);
+      onTrainClick(hit);
+    });
 
-    rl = routeLines[train.id] = {
-      layers: [],
-      state: state,
-      geomKey: geomKey,
-      latlngs: latlngs,
-      mode: modeFor(train.id),
-    };
-    buildLayers(rl);
-    if (rl.mode === "hi") applyRouteStyle(train.id);
+    // Tooltip de tren al pasar el cursor.
+    map.on("mouseenter", "trains-dot", (e) => {
+      map.getCanvas().style.cursor = "pointer";
+      const f = e.features && e.features[0];
+      if (!f) return;
+      popup
+        .setLngLat(f.geometry.coordinates)
+        .setHTML(trainPopupHtml(f.properties))
+        .addTo(map);
+    });
+    map.on("mousemove", "trains-dot", (e) => {
+      const f = e.features && e.features[0];
+      if (!f) return;
+      popup
+        .setLngLat(f.geometry.coordinates)
+        .setHTML(trainPopupHtml(f.properties));
+    });
+    map.on("mouseleave", "trains-dot", () => {
+      map.getCanvas().style.cursor = "";
+      popup.remove();
+    });
+
+    // Tooltip de estación.
+    map.on("mouseenter", "stations-dot", (e) => {
+      map.getCanvas().style.cursor = "pointer";
+      const f = e.features && e.features[0];
+      if (!f) return;
+      popup
+        .setLngLat(f.geometry.coordinates)
+        .setHTML('<div class="tip-title">' + escapeHtml(f.properties.name) + "</div>")
+        .addTo(map);
+    });
+    map.on("mouseleave", "stations-dot", () => {
+      map.getCanvas().style.cursor = "";
+      popup.remove();
+    });
   }
 
-  /* ---------- Ciclo de actualización ---------- */
+  /* ---------- API pública ---------- */
+
+  function init(containerId, clickHandler) {
+    onTrainClick = clickHandler;
+
+    map = new maplibregl.Map({
+      container: containerId,
+      style: VECTOR_STYLE,
+      center: [-3.7, 40.2],
+      zoom: 5.5,
+      minZoom: 4,
+      maxZoom: 14,
+      maxBounds: [[-12.5, 34.0], [6.5, 45.5]],
+      attributionControl: { compact: true },
+    });
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: false }),
+      "bottom-right"
+    );
+
+    // Cada carga de estilo (inicial o tras el fallback) reconstruye
+    // las capas superpuestas y repuebla los datos.
+    map.on("style.load", () => {
+      overlaysReady = false;
+      addOverlays();
+      refreshAll();
+    });
+    map.on("load", () => {
+      styleEverLoaded = true;
+    });
+
+    // Fallback: si las teselas vectoriales no cargan (CDN caído,
+    // bloqueado…), cambiar una sola vez al estilo raster OSM.
+    map.on("error", (e) => {
+      if (usedFallback || styleEverLoaded) return;
+      const err = e && e.error;
+      const msg = (err && err.message) || "";
+      const fromVector =
+        e.sourceId === "openmaptiles" || msg.indexOf("openfreemap") !== -1;
+      if (fromVector) {
+        usedFallback = true;
+        console.warn("Teselas vectoriales no disponibles; usando raster OSM:", msg);
+        map.setStyle(RASTER_STYLE);
+      }
+    });
+
+    bindHandlers();
+    return map;
+  }
 
   /**
-   * Pinta/actualiza marcadores de trenes visibles y sus rutas.
-   * `routes` es el mapa idTren → {stations, path} de app.js; las rutas de
-   * trenes filtrados o ya inactivos se retiran del mapa.
+   * Pinta/actualiza trenes visibles y sus rutas.
+   * `routes` es el mapa idTren → {stations, path} de app.js.
    */
   function updateTrains(trains, routes) {
-    routes = routes || {};
-    const seen = new Set();
-    for (const t of trains) {
-      seen.add(t.id);
-      const isSel = t.id === selectedId;
-      let m = markers[t.id];
-      if (m) {
-        m.setLatLng([t.lat, t.lon]);
-        refreshIcon(m, t, isSel);
-        m._train = t;
-      } else {
-        m = L.marker([t.lat, t.lon], {
-          icon: iconFor(t, isSel),
-          keyboard: false,
-          riseOnHover: true,
-        });
-        m._iconKey = RENFE.delayState(t.delay) + (isSel ? ":sel" : "");
-        m._train = t;
-        m.on("click", (ev) => {
-          L.DomEvent.stopPropagation(ev);
-          if (onTrainClick) onTrainClick(m._train.id);
-        });
-        m.bindTooltip("", { direction: "top", offset: [0, -12], className: "train-tip" });
-        m.addTo(trainLayer);
-        markers[t.id] = m;
-      }
-      m.setTooltipContent(tooltipHtml(t));
-
-      const route = routes[t.id];
-      if (route) ensureRouteLine(t, route);
+    lastTrains = trains || [];
+    lastRoutes = routes || {};
+    // Refrescar la ruta seleccionada si llega una versión más nueva.
+    if (selectedId && lastRoutes[selectedId]) {
+      selRoute = lastRoutes[selectedId];
     }
-
-    // Eliminar marcadores y rutas de trenes fuera de servicio o filtrados.
-    for (const id in markers) {
-      if (!seen.has(id)) {
-        trainLayer.removeLayer(markers[id]);
-        delete markers[id];
-      }
-    }
-    for (const id in routeLines) {
-      if (!seen.has(id)) removeRouteLine(id);
-    }
+    refreshAll();
   }
-
-  /* ---------- Selección ---------- */
 
   /** Marca un tren como seleccionado: su ruta se realza, el resto se atenúa. */
   function selectTrain(id, train, route) {
-    const prev = selectedId;
     selectedId = id;
+    selRoute = id ? (route || lastRoutes[id] || null) : null;
+    refreshAll();
 
-    if (prev && markers[prev] && markers[prev]._train) {
-      refreshIcon(markers[prev], markers[prev]._train, false);
-    }
-    selStopsLayer.clearLayers();
-
-    if (id && markers[id] && markers[id]._train) {
-      refreshIcon(markers[id], markers[id]._train, true);
-    }
-
-    // Si aún no había línea para este tren (p. ej. filtrado antes), créala.
-    if (id && train && route && !routeLines[id]) {
-      ensureRouteLine(train, route);
-    }
-    restyleAllRoutes();
-
-    if (!id) return;
-
-    // Paradas de la ruta seleccionada.
-    if (route && route.stations) {
-      for (const st of route.stations) {
-        const c = RENFE.stationCoords(st.code);
-        if (!c) continue;
-        L.circleMarker([c.lat, c.lon], {
-          renderer: routeRenderer,
-          radius: 4.5,
-          color: "#38bdf8",
-          weight: 2,
-          fillColor: "#04080f",
-          fillOpacity: 1,
-          interactive: false,
-        }).addTo(selStopsLayer);
-      }
-    }
-    if (train) {
-      map.panTo([train.lat, train.lon], { animate: true });
+    if (id && train) {
+      map.easeTo({ center: [train.lon, train.lat], duration: 600 });
     }
   }
 
