@@ -31,6 +31,13 @@ RENFE.Map = (function () {
   let usedFallback = false;    // ya se cambió al estilo raster
   let styleEverLoaded = false; // el estilo vectorial llegó a cargar
 
+  /* ---------- Interpolación suave de posiciones ---------- */
+  const prevPos = {};    // trainId → {lon, lat}
+  const targetPos = {};  // trainId → {lon, lat}
+  let animStart = 0;
+  const ANIM_MS = 2000;  // duración de la transición entre posiciones
+  let animFrameId = null;
+
   /* Máximo de puntos por ruta: por encima se muestrea uniformemente
    * conservando los extremos. */
   const MAX_ROUTE_POINTS = 50;
@@ -159,12 +166,29 @@ RENFE.Map = (function () {
     return { type: "FeatureCollection", features };
   }
 
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function easedT() {
+    if (!animStart) return 1;
+    var raw = Math.min(1, (performance.now() - animStart) / ANIM_MS);
+    return raw < 1 ? raw * (2 - raw) : 1; // easeOutQuad
+  }
+
+  function interpolatedPos(id, lon, lat) {
+    var p = prevPos[id];
+    if (!p) return [lon, lat];
+    var t = easedT();
+    if (t >= 1) return [lon, lat];
+    return [lerp(p.lon, lon, t), lerp(p.lat, lat, t)];
+  }
+
   function trainsFC() {
     const features = [];
     for (const t of lastTrains) {
+      var coords = interpolatedPos(t.id, t.lon, t.lat);
       features.push({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [t.lon, t.lat] },
+        geometry: { type: "Point", coordinates: coords },
         properties: {
           id: t.id,
           state: RENFE.delayState(t.delay),
@@ -177,6 +201,21 @@ RENFE.Map = (function () {
       });
     }
     return { type: "FeatureCollection", features };
+  }
+
+  function animTick() {
+    animFrameId = null;
+    if (!overlaysReady || !lastTrains.length) return;
+    setSourceData("trains", trainsFC());
+    if (easedT() < 1) {
+      animFrameId = requestAnimationFrame(animTick);
+    }
+  }
+
+  function startAnim() {
+    animStart = performance.now();
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    animFrameId = requestAnimationFrame(animTick);
   }
 
   function selRouteFC() {
@@ -463,13 +502,40 @@ RENFE.Map = (function () {
    * `routes` es el mapa idTren → {stations, path} de app.js.
    */
   function updateTrains(trains, routes) {
-    lastTrains = trains || [];
+    var incoming = trains || [];
     lastRoutes = routes || {};
-    // Refrescar la ruta seleccionada si llega una versión más nueva.
     if (selectedId && lastRoutes[selectedId]) {
       selRoute = lastRoutes[selectedId];
     }
-    refreshAll();
+
+    // Guardar posiciones anteriores para interpolar.
+    var seen = {};
+    for (var i = 0; i < incoming.length; i++) {
+      var t = incoming[i];
+      seen[t.id] = true;
+      var prev = targetPos[t.id];
+      if (prev && (prev.lon !== t.lon || prev.lat !== t.lat)) {
+        prevPos[t.id] = { lon: prev.lon, lat: prev.lat };
+      } else if (!prev) {
+        prevPos[t.id] = { lon: t.lon, lat: t.lat };
+      }
+      targetPos[t.id] = { lon: t.lon, lat: t.lat };
+    }
+    // Limpiar trenes desaparecidos.
+    for (var id in targetPos) {
+      if (!seen[id]) { delete targetPos[id]; delete prevPos[id]; }
+    }
+
+    lastTrains = incoming;
+
+    // Actualizar rutas, selección, etc. inmediatamente.
+    if (overlaysReady) {
+      setSourceData("routes", routesFC());
+      setSourceData("selroute", selRouteFC());
+      setSourceData("selstops", selStopsFC());
+    }
+    // Trenes con animación suave.
+    startAnim();
   }
 
   /** Marca un tren como seleccionado: su ruta se realza, el resto se atenúa. */
