@@ -100,6 +100,7 @@ const OVERPASS_QUERY = `
 area["ISO3166-1"="ES"][admin_level=2]->.spain;
 (
   way["railway"="rail"](area.spain);
+  way["railway"="narrow_gauge"](area.spain);
 );
 out geom;
 `;
@@ -428,20 +429,17 @@ function buildCSR(graph) {
  * se aplica si está a <OVERRIDE_GUARD_KM de las coords del feed.
  */
 const SNAP_OVERRIDES = {
-  // Verificadas contra los nodos railway=station de OSM.
-  "10600": { lat: 37.8884, lon: -4.7906 },  // Córdoba Central
+  // Coordenadas verificadas contra nodos railway=station de OSM.
+  // CUIDADO: las claves están en el espacio del CATÁLOGO estático y
+  // colisionan con el del feed. OVERRIDE_GUARD_KM rechaza los que
+  // están lejos de la posición real del feed, pero hay que evitar
+  // meter códigos que en el feed apuntan a otra estación cercana.
+  // Códigos que NO existen en el feed (sin riesgo de colisión):
   "11600": { lat: 38.6913, lon: -4.1119 },  // Puertollano
-  "13200": { lat: 40.9102, lon: -4.0948 },  // Segovia-Guiomar
-  "15211": { lat: 42.5951, lon: -5.5819 },  // León
   "31202": { lat: 39.0001, lon: -1.8473 },  // Albacete-Los Llanos
   "36300": { lat: 39.5218, lon: -1.1347 },  // Requena-Utiel (AV)
-  "37400": { lat: 40.0340, lon: -2.1437 },  // Cuenca-Fernando Zóbel
-  "50200": { lat: 38.9849, lon: -3.9131 },  // Ciudad Real Central
-  "61200": { lat: 40.5864, lon: -3.1264 },  // Guadalajara-Yebes
-  "71500": { lat: 41.1922, lon: 1.2736 },   // Camp de Tarragona
   "74500": { lat: 42.2647, lon: 2.9427 },   // Figueres-Vilafant
   "81600": { lat: 42.3690, lon: -3.6700 },  // Burgos-Rosa de Lima
-  "94004": { lat: 37.0702, lon: -4.7197 },  // Antequera-Santa Ana
 };
 
 /**
@@ -879,7 +877,7 @@ async function main() {
     }
     payload = {
       generated: new Date().toISOString(),
-      source: "OpenStreetMap (Overpass API), railway=rail, España + feed Renfe LD",
+      source: "OpenStreetMap (Overpass API), railway=rail|narrow_gauge, España + feed Renfe LD",
       tolerance,
       stations: stationsOut,
       aliases,

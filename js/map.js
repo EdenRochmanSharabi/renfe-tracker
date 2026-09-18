@@ -248,11 +248,12 @@ RENFE.Map = (function () {
   function stationsFC() {
     const features = [];
     for (const code in RENFE.AVE_STATIONS) {
-      const s = RENFE.AVE_STATIONS[code];
+      const c = RENFE.stationCoords(code);
+      if (!c) continue;
       features.push({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-        properties: { name: s.name },
+        geometry: { type: "Point", coordinates: [c.lon, c.lat] },
+        properties: { name: RENFE.stationName(code) },
       });
     }
     return { type: "FeatureCollection", features };
