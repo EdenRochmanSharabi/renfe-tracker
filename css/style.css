@@ -370,6 +370,17 @@ main {
   background-color: rgba(15, 31, 56, 0.9) !important;
 }
 
+/* Aviso de gestos cooperativos ("Usa Ctrl + rueda…") en tema HUD */
+.maplibregl-cooperative-gesture-screen {
+  background: rgba(4, 8, 15, 0.72);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 12px var(--accent-glow);
+  z-index: 700;
+}
+
 /* ---------- Panel de datos (debajo del mapa, scroll de página) ---------- */
 aside {
   background: var(--bg);
@@ -751,5 +762,54 @@ aside::before {
 }
 
 @media (max-width: 600px) {
-  .stat-value { font-size: 24px; }
+  /* Cabecera compacta: menos padding, tipografía menor, filtros densos */
+  header { padding: 7px 10px; gap: 6px 10px; }
+  header h1 { font-size: 15px; }
+  .status { font-size: 11.5px; gap: 6px; }
+  #last-update, #visible-count { font-size: 10.5px; }
+  .filters { gap: 8px; }
+  .filters select,
+  .filters input[type="search"] {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .filters input[type="search"] { min-width: 100px; }
+  .filters label.check { font-size: 12px; }
+
+  /* Leyenda más pequeña para no tapar el mapa */
+  .map-legend {
+    bottom: 10px;
+    left: 8px;
+    padding: 6px 8px;
+    font-size: 10px;
+    gap: 3px;
+  }
+  .legend-title { font-size: 8px; letter-spacing: 1.5px; }
+  .legend-dot { width: 8px; height: 8px; }
+  .legend-dot.station { width: 6px; height: 6px; }
+  .map-legend .row { gap: 6px; }
+
+  /* Panel de detalles a ancho completo */
+  #details {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(70vh, calc(100% - 16px));
+    padding: 12px;
+  }
+  #det-stops { max-height: 180px; }
+
+  /* Estadísticas y tarjetas más compactas */
+  .stats-grid { gap: 8px; }
+  .stat { padding: 8px 10px; }
+  .stat-value { font-size: 22px; }
+  .panel-scroll { padding: 12px; gap: 12px; }
+  .card { padding: 10px 12px; }
+
+  /* Gráficos con altura fija utilizable en pantallas estrechas */
+  .chart-box { height: 200px; }
+  .chart-box.tall { height: 260px; }
+
+  .maplibregl-cooperative-gesture-screen { font-size: 12px; }
 }

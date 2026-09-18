@@ -503,8 +503,23 @@ RENFE.Map = (function () {
       zoom: 5.5,
       minZoom: 4,
       maxZoom: 14,
-      maxBounds: [[-12.5, 34.0], [6.5, 45.5]],
+      // Limitado a la España peninsular + Baleares: el sur queda en el
+      // Estrecho (35.8°N) para no mostrar el norte de África, y el este
+      // en 4.5°E (justo pasada Menorca).
+      maxBounds: [[-10.0, 35.8], [4.5, 44.0]],
       attributionControl: { compact: true },
+      // Gestos cooperativos: la rueda sola hace scroll de la página
+      // (Ctrl/⌘ + rueda para zoom) y en móvil un dedo desplaza la
+      // página mientras que dos dedos mueven el mapa.
+      cooperativeGestures: true,
+      locale: {
+        "CooperativeGesturesHandler.WindowsHelpText":
+          "Usa Ctrl + rueda para hacer zoom en el mapa",
+        "CooperativeGesturesHandler.MacHelpText":
+          "Usa ⌘ + rueda para hacer zoom en el mapa",
+        "CooperativeGesturesHandler.MobileHelpText":
+          "Usa dos dedos para mover el mapa",
+      },
     });
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
