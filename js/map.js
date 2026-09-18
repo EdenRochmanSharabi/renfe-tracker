@@ -45,6 +45,93 @@ RENFE.Map = (function () {
    * conservando los extremos. */
   const MAX_ROUTE_POINTS = 200;
 
+  /* Las polilíneas de vía real (OSM) vienen ya simplificadas offline;
+   * se les permite mucho más detalle que a la secuencia del API. */
+  const MAX_RAIL_POINTS = 2500;
+
+  /* ---------- Geometría ferroviaria real (OSM, pre-calculada) ---------- */
+
+  // rail-network.json generado por scripts/build-rail-geometry.js:
+  //   segments: { "codigoA-codigoB" (ordenados) → [[lon,lat], …] }
+  //   aliases:  { códigoDelFeed → códigoCanónico } resuelto por nombre
+  let railSegments = null;
+  let railAliases = null;
+
+  /* Guardarraíl: un extremo del segmento pre-calculado debe caer cerca
+   * de la estación real (coords aprendidas del feed). Protege frente a
+   * colisiones entre espacios de códigos. */
+  const RAIL_ENDPOINT_MAX_KM = 15;
+
+  /** Carga (una vez) la geometría de vías pre-calculada. */
+  function initRailGeometry() {
+    RENFE.fetchJSON("/api/rail-geometry", 30000)
+      .then(function (json) {
+        if (!json || !json.segments) throw new Error("respuesta sin segmentos");
+        railSegments = json.segments;
+        railAliases = json.aliases || {};
+        refreshAll(); // re-pintar rutas ya visibles con la vía real
+      })
+      .catch(function (err) {
+        console.warn("Geometría ferroviaria no disponible (se usa la del API):", err.message);
+      });
+  }
+
+  /**
+   * Segmento de vía real entre dos códigos de estación del feed,
+   * orientado de `codeA` a `codeB`. Devuelve null si no hay segmento
+   * pre-calculado fiable.
+   */
+  function railSegmentBetween(codeA, codeB) {
+    const ca = railAliases[codeA];
+    const cb = railAliases[codeB];
+    if (!ca || !cb || ca === cb) return null;
+    const key = ca < cb ? ca + "-" + cb : cb + "-" + ca;
+    const seg = railSegments[key];
+    if (!seg || seg.length < 2) return null;
+
+    const A = RENFE.stationCoords(codeA);
+    const B = RENFE.stationCoords(codeB);
+    if (!A || !B) return null;
+
+    const first = seg[0];
+    const last = seg[seg.length - 1];
+    // Orientación: el extremo más cercano a A es el inicio.
+    const dFirstA = RENFE._distKm(A.lat, A.lon, first[1], first[0]);
+    const dLastA = RENFE._distKm(A.lat, A.lon, last[1], last[0]);
+    const reversed = dLastA < dFirstA;
+    const start = reversed ? last : first;
+    const end = reversed ? first : last;
+
+    // Guardarraíl de coherencia con la posición real de las estaciones.
+    if (RENFE._distKm(A.lat, A.lon, start[1], start[0]) > RAIL_ENDPOINT_MAX_KM) return null;
+    if (RENFE._distKm(B.lat, B.lon, end[1], end[0]) > RAIL_ENDPOINT_MAX_KM) return null;
+
+    if (!reversed) return seg;
+    const out = new Array(seg.length);
+    for (let i = 0; i < seg.length; i++) out[i] = seg[seg.length - 1 - i];
+    return out;
+  }
+
+  /**
+   * Geometría de vía real para una ruta completa: concatena los
+   * segmentos pre-calculados entre paradas consecutivas. Devuelve null
+   * si falta algún segmento (el llamante hará fallback al API).
+   */
+  function railPathFor(route) {
+    if (!railSegments || !railAliases) return null;
+    const stations = route.stations;
+    if (!stations || stations.length < 2) return null;
+
+    const path = [];
+    for (let i = 0; i < stations.length - 1; i++) {
+      const seg = railSegmentBetween(stations[i].code, stations[i + 1].code);
+      if (!seg) return null;
+      // Evitar duplicar el punto de unión entre segmentos.
+      for (let j = path.length ? 1 : 0; j < seg.length; j++) path.push(seg[j]);
+    }
+    return path.length > 1 ? path : null;
+  }
+
   /* Colores por estado de retraso. */
   const STATE_CORE = ["match", ["get", "state"],
     "ok", "#34d399", "warn", "#fbbf24", "late", "#f87171", "#34d399"];
@@ -108,8 +195,13 @@ RENFE.Map = (function () {
     return out;
   }
 
-  /** Coordenadas [lon, lat] de una ruta (path real o estaciones). */
+  /** Coordenadas [lon, lat] de una ruta.
+   *  Prioridad: vía real OSM pre-calculada → secuencia del API →
+   *  línea recta entre estaciones. */
   function coordsFor(route) {
+    const rail = railPathFor(route);
+    if (rail) return downsamplePts(rail, MAX_RAIL_POINTS);
+
     let pts;
     if (route.path && route.path.length > 1) {
       pts = route.path.map((p) => [p.lon, p.lat]);
@@ -508,19 +600,36 @@ RENFE.Map = (function () {
       // en 4.5°E (justo pasada Menorca).
       maxBounds: [[-10.0, 35.8], [4.5, 44.0]],
       attributionControl: { compact: true },
-      // Gestos cooperativos: la rueda sola hace scroll de la página
-      // (Ctrl/⌘ + rueda para zoom) y en móvil un dedo desplaza la
-      // página mientras que dos dedos mueven el mapa.
-      cooperativeGestures: true,
-      locale: {
-        "CooperativeGesturesHandler.WindowsHelpText":
-          "Usa Ctrl + rueda para hacer zoom en el mapa",
-        "CooperativeGesturesHandler.MacHelpText":
-          "Usa ⌘ + rueda para hacer zoom en el mapa",
-        "CooperativeGesturesHandler.MobileHelpText":
-          "Usa dos dedos para mover el mapa",
-      },
     });
+
+    // Scroll: rueda sola = scroll de página, Ctrl/⌘+rueda = zoom.
+    // Aviso solo la primera vez que el usuario intenta hacer scroll sin modifier.
+    map.scrollZoom.disable();
+    var hintShown = false;
+    var hintEl = null;
+    function showScrollHint() {
+      if (hintShown) return;
+      hintShown = true;
+      hintEl = document.createElement("div");
+      hintEl.className = "map-scroll-hint";
+      var isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+      hintEl.textContent = isMac
+        ? "Usa ⌘ + rueda para hacer zoom"
+        : "Usa Ctrl + rueda para hacer zoom";
+      map.getContainer().appendChild(hintEl);
+      setTimeout(function () {
+        if (hintEl) { hintEl.remove(); hintEl = null; }
+      }, 2500);
+    }
+    map.getCanvas().addEventListener("wheel", function (e) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        var delta = -e.deltaY * (e.deltaMode === 1 ? 60 : 1) * 0.002;
+        map.zoomTo(map.getZoom() + delta, { around: map.unproject([e.offsetX, e.offsetY]) });
+      } else {
+        showScrollHint();
+      }
+    }, { passive: false });
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "bottom-right"
@@ -551,6 +660,7 @@ RENFE.Map = (function () {
     });
 
     bindHandlers();
+    initRailGeometry();
     return map;
   }
 
