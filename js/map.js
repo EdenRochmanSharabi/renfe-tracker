@@ -45,7 +45,7 @@ RENFE.Map = (function () {
   const MAX_SNAP_M = 10000;
   const MAX_ARC_JUMP_M = 4000; // ~480 km/h en 30s — teleportar si mayor
   let animStart = 0;     // timestamp del último update
-  const POLL_MS = 30000;  // intervalo de polling (debe coincidir con app.js)
+  const POLL_MS = 10000;  // intervalo de polling (debe coincidir con app.js)
   let animFrameId = null;
   let animRunning = false;
 
