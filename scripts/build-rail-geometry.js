@@ -46,6 +46,14 @@ const HIGHSPEED_FACTOR = 0.8;   // preferencia por vías de alta velocidad
 const SERVICE_FACTOR = 3.0;     // penaliza apartaderos/haces (service=*) sin
                                 // desconectarlos: en varias estaciones son el
                                 // único enlace entre tramos de vía general
+const STATION_GLUE_KM = 0.5;    // radio de "pegado" en estaciones: une el nodo
+                                // de la estación con todas las vías cercanas.
+                                // Modela la parada física del tren y salva la
+                                // separación ancho ibérico ↔ ancho estándar
+                                // (en OSM las redes de distinto ancho no se
+                                // tocan y Dijkstra se vería forzado a rodear
+                                // por la línea convencional)
+const STATION_GLUE_WEIGHT = 0.05; // coste simbólico de esos enlaces (km)
 const COORD_DECIMALS = 5;       // ~1 m de precisión
 
 const args = process.argv.slice(2);
@@ -188,8 +196,9 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Construye el grafo en formato CSR a partir de los ways de Overpass.
- * Devuelve { n, lats, lons, csrOffsets, csrTargets, csrWeights }.
+ * Extrae nodos y aristas de los ways de Overpass.
+ * Devuelve { n, lats, lons, eSrc, eDst, eW } (aristas sin compactar:
+ * permite añadir enlaces de estación antes de construir el CSR).
  */
 function buildGraph(overpass) {
   const idIndex = new Map(); // id OSM → índice compacto
@@ -231,10 +240,22 @@ function buildGraph(overpass) {
   }
 
   const n = latsArr.length;
-  const m = eSrc.length;
-  log(`Grafo: ${ways} ways, ${n} nodos, ${m / 2} aristas`);
+  log(`Grafo: ${ways} ways, ${n} nodos, ${eSrc.length / 2} aristas`);
 
-  // CSR
+  return {
+    n,
+    lats: Float64Array.from(latsArr),
+    lons: Float64Array.from(lonsArr),
+    eSrc,
+    eDst,
+    eW,
+  };
+}
+
+/** Compacta las aristas en formato CSR: { offsets, targets, weights }. */
+function buildCSR(graph) {
+  const { n, eSrc, eDst, eW } = graph;
+  const m = eSrc.length;
   const offsets = new Int32Array(n + 1);
   for (let e = 0; e < m; e++) offsets[eSrc[e] + 1]++;
   for (let i = 0; i < n; i++) offsets[i + 1] += offsets[i];
@@ -247,15 +268,7 @@ function buildGraph(overpass) {
     targets[pos] = eDst[e];
     weights[pos] = eW[e];
   }
-
-  return {
-    n,
-    lats: Float64Array.from(latsArr),
-    lons: Float64Array.from(lonsArr),
-    offsets,
-    targets,
-    weights,
-  };
+  return { n, offsets, targets, weights };
 }
 
 /* ---------- 3. Estación → nodo OSM más cercano ---------- */
@@ -267,13 +280,20 @@ function buildGraph(overpass) {
  * pinta el mapa no se toca.
  */
 const SNAP_OVERRIDES = {
-  "10600": { lat: 37.8884, lon: -4.7906 }, // Córdoba Central
-  "13200": { lat: 40.9128, lon: -4.0917 }, // Segovia-Guiomar
-  "37400": { lat: 40.0792, lon: -2.1350 }, // Cuenca-Fernando Zóbel
-  "61200": { lat: 40.5764, lon: -3.1136 }, // Guadalajara-Yebes
-  "71500": { lat: 41.1561, lon: 1.1711 },  // Camp de Tarragona
-  "81600": { lat: 42.3690, lon: -3.6700 }, // Burgos-Rosa de Lima
-  "94004": { lat: 37.0639, lon: -4.6039 }, // Antequera-Santa Ana
+  // Verificadas contra los nodos railway=station de OSM.
+  "10600": { lat: 37.8884, lon: -4.7906 },  // Córdoba Central
+  "11600": { lat: 38.6913, lon: -4.1119 },  // Puertollano
+  "13200": { lat: 40.9102, lon: -4.0948 },  // Segovia-Guiomar
+  "15211": { lat: 42.5951, lon: -5.5819 },  // León
+  "31202": { lat: 39.0001, lon: -1.8473 },  // Albacete-Los Llanos
+  "36300": { lat: 39.5218, lon: -1.1347 },  // Requena-Utiel (AV)
+  "37400": { lat: 40.0340, lon: -2.1437 },  // Cuenca-Fernando Zóbel
+  "50200": { lat: 38.9849, lon: -3.9131 },  // Ciudad Real Central
+  "61200": { lat: 40.5864, lon: -3.1264 },  // Guadalajara-Yebes
+  "71500": { lat: 41.1922, lon: 1.2736 },   // Camp de Tarragona
+  "74500": { lat: 42.2647, lon: 2.9427 },   // Figueres-Vilafant
+  "81600": { lat: 42.3690, lon: -3.6700 },  // Burgos-Rosa de Lima
+  "94004": { lat: 37.0702, lon: -4.7197 },  // Antequera-Santa Ana
 };
 
 /**
@@ -282,8 +302,8 @@ const SNAP_OVERRIDES = {
  * solo a la componente gigante evita que caigan en tramos aislados
  * (apartaderos, vías museo…) desde los que Dijkstra no llega a ningún sitio.
  */
-function connectedComponents(graph) {
-  const { n, offsets, targets } = graph;
+function connectedComponents(csr) {
+  const { n, offsets, targets } = csr;
   const comp = new Int32Array(n).fill(-1);
   const queue = new Int32Array(n);
   let nComp = 0;
@@ -368,8 +388,8 @@ class MinHeap {
 }
 
 /** Dijkstra desde `source`; para cuando todos los `targetSet` están fijados. */
-function dijkstra(graph, source, targetSet) {
-  const { n, offsets, targets, weights } = graph;
+function dijkstra(csr, source, targetSet) {
+  const { n, offsets, targets, weights } = csr;
   const dist = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
   const done = new Uint8Array(n);
@@ -507,9 +527,11 @@ async function main() {
   overpass.elements = null;
 
   /* Estación → nodo OSM (solo en la componente conexa principal). */
-  const { comp, giant } = connectedComponents(graph);
+  let csr = buildCSR(graph);
+  const { comp, giant } = connectedComponents(csr);
   const codes = Object.keys(AVE_STATIONS).sort();
   const stationNode = {}; // código → índice de nodo
+  let glueEdges = 0;
   for (const code of codes) {
     const s = SNAP_OVERRIDES[code] || AVE_STATIONS[code];
     const { idx, dKm } = nearestNode(graph, s.lat, s.lon, MAX_SNAP_KM, comp, giant);
@@ -518,8 +540,25 @@ async function main() {
       continue;
     }
     stationNode[code] = idx;
+
+    // "Pegado" de estación: enlaza el nodo elegido con todos los nodos
+    // ferroviarios cercanos (cualquier componente/ancho de vía).
+    const rad = Math.PI / 180;
+    const cosLat = Math.cos(s.lat * rad);
+    for (let i = 0; i < graph.n; i++) {
+      if (i === idx) continue;
+      const dLat = (graph.lats[i] - s.lat) * 111.32;
+      const dLon = (graph.lons[i] - s.lon) * 111.32 * cosLat;
+      if (dLat * dLat + dLon * dLon <= STATION_GLUE_KM * STATION_GLUE_KM) {
+        graph.eSrc.push(idx); graph.eDst.push(i); graph.eW.push(STATION_GLUE_WEIGHT);
+        graph.eSrc.push(i); graph.eDst.push(idx); graph.eW.push(STATION_GLUE_WEIGHT);
+        glueEdges++;
+      }
+    }
     log(`  ${code} ${AVE_STATIONS[code].name} → nodo a ${(dKm * 1000).toFixed(0)} m${SNAP_OVERRIDES[code] ? " (coords corregidas)" : ""}`);
   }
+  log(`Enlaces de estación añadidos: ${glueEdges}`);
+  csr = buildCSR(graph); // recompactar con los enlaces de estación
 
   /* Dijkstra desde cada estación; extraer caminos hacia códigos mayores. */
   const snapped = codes.filter((c) => stationNode[c] !== undefined);
@@ -530,7 +569,7 @@ async function main() {
     const a = snapped[i];
     const targetsCodes = snapped.slice(i + 1);
     const targetSet = new Set(targetsCodes.map((c) => stationNode[c]));
-    const { dist, prev } = dijkstra(graph, stationNode[a], targetSet);
+    const { dist, prev } = dijkstra(csr, stationNode[a], targetSet);
     let found = 0;
     for (const b of targetsCodes) {
       const tIdx = stationNode[b];
