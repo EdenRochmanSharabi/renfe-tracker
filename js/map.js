@@ -43,9 +43,8 @@ RENFE.Map = (function () {
   /* Si el GPS del tren cae a más de esta distancia de su ruta, no se
    * proyecta (se usa la posición cruda: la ruta será errónea). */
   const MAX_SNAP_M = 10000;
+  const MAX_ARC_JUMP_M = 4000; // ~480 km/h en 30s — teleportar si mayor
   let animStart = 0;     // timestamp del último update
-  let lastUpdateTime = 0;
-  const LERP_MS = 2500;  // transición suave al recibir datos nuevos
   const POLL_MS = 30000;  // intervalo de polling (debe coincidir con app.js)
   let animFrameId = null;
   let animRunning = false;
@@ -528,75 +527,34 @@ RENFE.Map = (function () {
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
-  /** Calcula la posición interpolada/extrapolada de un tren.
-   *
-   *  Modo principal (tren proyectado sobre su ruta): se anima la
-   *  longitud de arco sobre la polilínea de la ruta, de modo que el
-   *  punto siempre cae sobre la línea dibujada y avanza siguiendo las
-   *  curvas reales de la vía.
-   *  - Los primeros LERP_MS tras un update: lerp suave prevArc → targetArc.
-   *  - Después: extrapola a la velocidad media del último intervalo,
-   *    limitada a 0.5x el último salto para no adelantarse demasiado.
-   *
-   *  Fallback (sin ruta o tren lejos de ella): interpolación libre en
-   *  lon/lat como antes. */
+  /** Posición interpolada de un tren: lerp lineal de prev a target
+   *  durante todo el intervalo de polling (30s). Sin extrapolación —
+   *  al llegar a target, se mantiene ahí hasta el siguiente poll.
+   *  Si el salto es irrazonable (>480 km/h), teleporta directamente. */
   function livePos(id, now) {
+    var elapsed = now - animStart;
+    var t = elapsed / POLL_MS;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+
     var poly = routePolylines[id];
     var tArc = targetArc[id];
     if (poly && tArc !== undefined) {
       var pArc = prevArc[id];
-      var arc;
-      if (pArc === undefined) {
-        arc = tArc;
-      } else {
-        var elapsedA = now - animStart;
-        var jump = tArc - pArc;
-        if (elapsedA < LERP_MS) {
-          // Fase 1: transición suave prevArc → targetArc
-          var ta = elapsedA / LERP_MS;
-          ta = ta * (2 - ta); // easeOutQuad
-          arc = pArc + jump * ta;
-        } else if (jump === 0) {
-          arc = tArc;
-        } else {
-          // Fase 2: seguir avanzando por la ruta a velocidad constante,
-          // limitado a 0.5x el último salto.
-          var extraA = (elapsedA - LERP_MS) * (jump / POLL_MS);
-          var maxExtra = Math.abs(jump) * 0.5;
-          if (extraA > maxExtra) extraA = maxExtra;
-          else if (extraA < -maxExtra) extraA = -maxExtra;
-          arc = tArc + extraA;
-        }
-      }
+      if (pArc === undefined) pArc = tArc;
+      if (Math.abs(tArc - pArc) > MAX_ARC_JUMP_M) return samplePolyline(poly, tArc);
+      var arc = pArc + (tArc - pArc) * t;
       var total = poly.cumDist[poly.cumDist.length - 1];
       if (arc < 0) arc = 0;
       else if (arc > total) arc = total;
       return samplePolyline(poly, arc);
     }
 
-    // Fallback: interpolación/extrapolación libre en lon/lat.
     var tgt = targetPos[id];
     var prv = prevPos[id];
     if (!tgt) return null;
     if (!prv) return [tgt.lon, tgt.lat];
-
-    var elapsed = now - animStart;
-    var dLon = tgt.lon - prv.lon;
-    var dLat = tgt.lat - prv.lat;
-
-    if (elapsed < LERP_MS) {
-      // Fase 1: transición suave prev → target
-      var t = elapsed / LERP_MS;
-      t = t * (2 - t); // easeOutQuad
-      return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
-    }
-    // Fase 2: extrapolar suavemente — velocidad constante pero limitada
-    // a 0.5x la distancia del último salto para no alejar el tren de su ruta.
-    if (dLon === 0 && dLat === 0) return [tgt.lon, tgt.lat];
-    var extraMs = elapsed - LERP_MS;
-    var speed = 1 / POLL_MS;
-    var extra = Math.min(extraMs * speed, 0.5);
-    return [tgt.lon + dLon * extra, tgt.lat + dLat * extra];
+    return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
   }
 
   function trainsFC() {
