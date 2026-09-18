@@ -37,7 +37,7 @@ RENFE.Map = (function () {
   let animStart = 0;     // timestamp del último update
   let lastUpdateTime = 0;
   const LERP_MS = 2500;  // transición suave al recibir datos nuevos
-  const POLL_MS = 15000;  // intervalo de polling (debe coincidir con app.js)
+  const POLL_MS = 30000;  // intervalo de polling (debe coincidir con app.js)
   let animFrameId = null;
   let animRunning = false;
 
