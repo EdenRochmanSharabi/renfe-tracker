@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/fleet", "destination": "/api/fleet" },
-    { "source": "/api/routes", "destination": "/api/routes" }
+    { "source": "/api/routes", "destination": "/api/routes" },
+    { "source": "/api/rail-geometry", "destination": "/api/rail-geometry" }
   ],
   "headers": [
     {

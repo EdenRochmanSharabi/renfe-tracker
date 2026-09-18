@@ -1,0 +1,14 @@
+{
+  "name": "renfe-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mapa en tiempo real de trenes AVE/Largo Recorrido con geometría ferroviaria real de OpenStreetMap",
+  "scripts": {
+    "build:rail": "node --max-old-space-size=8192 scripts/build-rail-geometry.js",
+    "build:rail:refresh": "node --max-old-space-size=8192 scripts/build-rail-geometry.js --refresh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
