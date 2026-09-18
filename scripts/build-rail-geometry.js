@@ -1,30 +1,42 @@
 /* ===========================================================
  * build-rail-geometry.js — Genera geometría ferroviaria real
- * a partir de OpenStreetMap (Overpass API).
+ * a partir de OpenStreetMap (Overpass API) para TODAS las rutas
+ * del feed de Renfe.
  *
  * Uso:
- *   node scripts/build-rail-geometry.js [--refresh] [--tolerance 0.0005]
+ *   node scripts/build-rail-geometry.js [--refresh] [--refresh-routes] [--tolerance 0.0005]
  *
  * Pasos:
  *   1. Descarga todas las vías railway=rail de España vía Overpass
  *      (cacheado en scripts/.cache/ para poder re-ejecutar sin red).
- *   2. Construye un grafo: cada nodo OSM es un vértice; cada vía
+ *   2. Descarga las rutas reales del feed de Renfe (también cacheado):
+ *      cada tren trae una "secuencia" de waypoints con código de
+ *      estación y coordenadas GPS. De ahí salen TODAS las estaciones
+ *      (~1.4k) y todos los pares consecutivos que aparecen en rutas
+ *      reales (~1.4k pares).
+ *   3. Construye un grafo: cada nodo OSM es un vértice; cada vía
  *      conecta nodos adyacentes con peso = distancia haversine
  *      (las vías highspeed=yes reciben un factor 0.8 para preferir
  *      la línea de alta velocidad cuando hay alternativa clásica).
- *   3. Asocia cada estación del catálogo (js/stations.js) al nodo
- *      OSM más cercano (máx. 2 km; si no, aviso).
- *   4. Dijkstra entre cada par de estaciones → polilínea real.
- *   5. Simplifica (Douglas-Peucker) y escribe:
- *        data/rail-network.json   (segmentos por par de estaciones)
+ *   4. Asocia cada estación del feed al nodo OSM más cercano
+ *      (máx. 2 km; índice espacial de rejilla para no hacer fuerza
+ *      bruta sobre ~270k nodos × ~1.4k estaciones).
+ *   5. Dijkstra SOLO entre pares consecutivos (agrupado por origen
+ *      para minimizar ejecuciones) → polilínea real por par.
+ *   6. Simplifica (Douglas-Peucker) y escribe:
+ *        data/rail-network.json   (segmentos por par consecutivo,
+ *                                  estaciones y aliases)
  *        data/rail-spain.geojson  (red completa, para depuración)
  *
- * Espacios de códigos: el feed de Renfe usa códigos que no siempre
- * coinciden con el catálogo estático (p. ej. 10600 es Córdoba en el
- * catálogo pero Valladolid en el feed). El JSON de salida incluye un
- * mapa "aliases" código-del-feed → código-canónico resuelto por
- * NOMBRE de estación; los códigos ambiguos se omiten para que el
- * cliente haga fallback a la secuencia del API.
+ * Espacios de códigos: el espacio CANÓNICO de salida es el del feed
+ * de Renfe (es el que ve el cliente en tiempo real). El catálogo
+ * estático (js/stations.js) usa otro espacio que COLISIONA con él
+ * (p. ej. 10600 es Córdoba en el catálogo pero Valladolid en el
+ * feed), así que:
+ *   - aliases mapea cada código del feed a sí mismo (identidad), y
+ *   - añade código-del-catálogo → código-del-feed resuelto por
+ *     NOMBRE (con guardarraíl de distancia), solo cuando el código
+ *     del catálogo no existe ya en el feed con otro significado.
  * =========================================================== */
 "use strict";
 
@@ -36,9 +48,13 @@ import vm from "node:vm";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE_DIR = path.join(ROOT, "scripts", ".cache");
 const CACHE_FILE = path.join(CACHE_DIR, "overpass-es-rail.json");
+const ROUTES_CACHE_FILE = path.join(CACHE_DIR, "renfe-routes.json");
 const DATA_DIR = path.join(ROOT, "data");
 const OUT_NETWORK = path.join(DATA_DIR, "rail-network.json");
 const OUT_GEOJSON = path.join(DATA_DIR, "rail-spain.geojson");
+
+const RENFE_ROUTES_URL =
+  "https://tiempo-real.largorecorrido.renfe.com/renfe-visor/trenesConEstacionesLD.json";
 
 const MAX_SNAP_KM = 2;          // distancia máxima estación → nodo OSM
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024; // objetivo < 2 MB
@@ -55,9 +71,21 @@ const STATION_GLUE_KM = 0.5;    // radio de "pegado" en estaciones: une el nodo
                                 // por la línea convencional)
 const STATION_GLUE_WEIGHT = 0.05; // coste simbólico de esos enlaces (km)
 const COORD_DECIMALS = 5;       // ~1 m de precisión
+const MIN_COMP_NODES = 50;      // tamaño mínimo de componente conexa para
+                                // aceptar un snap (evita apartaderos y vías
+                                // museo aisladas, pero admite redes grandes
+                                // no conectadas a la gigante, p. ej. FEVE)
+const GRID_CELL_DEG = 0.05;     // celda del índice espacial (~5.5 km en lat)
+const OVERRIDE_GUARD_KM = 20;   // un SNAP_OVERRIDE solo aplica si está cerca
+                                // de las coords del feed (los overrides están
+                                // en el espacio de códigos del catálogo, que
+                                // colisiona con el del feed)
+const DIJKSTRA_CAP_SLACK = 4;   // tope de exploración: 4× la distancia en
+                                // línea recta al destino más lejano + 50 km
 
 const args = process.argv.slice(2);
 const REFRESH = args.includes("--refresh");
+const REFRESH_ROUTES = args.includes("--refresh-routes");
 const tolIdx = args.indexOf("--tolerance");
 let BASE_TOLERANCE = tolIdx >= 0 ? Number(args[tolIdx + 1]) : 0.0005;
 if (!isFinite(BASE_TOLERANCE) || BASE_TOLERANCE <= 0) BASE_TOLERANCE = 0.0005;
@@ -101,44 +129,12 @@ function normName(s) {
   return String(s)
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
-/**
- * Mapa código-del-feed → código canónico del catálogo, resuelto por nombre.
- *  - Cada código del catálogo empieza mapeado a sí mismo.
- *  - Cada código del feed cuyo nombre coincide con una estación del
- *    catálogo se mapea a esa estación (sobrescribe la identidad).
- *  - Cada código del feed cuyo nombre NO existe en el catálogo se
- *    ELIMINA del mapa: el mismo código con otro significado en el
- *    catálogo sería una colisión (p. ej. 60200 = Aranjuez en el feed
- *    pero Chamartín en el catálogo).
- */
-function buildAliases(AVE_STATIONS, FEED_STATION_NAMES) {
-  const byName = {};
-  for (const code in AVE_STATIONS) byName[normName(AVE_STATIONS[code].name)] = code;
-
-  const aliases = {};
-  for (const code in AVE_STATIONS) aliases[code] = code;
-
-  let matched = 0, dropped = 0;
-  for (const feedCode in FEED_STATION_NAMES) {
-    const canonical = byName[normName(FEED_STATION_NAMES[feedCode])];
-    if (canonical) {
-      aliases[feedCode] = canonical;
-      matched++;
-    } else if (aliases[feedCode]) {
-      delete aliases[feedCode]; // código ambiguo entre espacios
-      dropped++;
-    }
-  }
-  log(`Aliases: ${matched} códigos del feed resueltos por nombre, ${dropped} ambiguos descartados`);
-  return aliases;
-}
-
-/* ---------- 1. Descarga Overpass ---------- */
+/* ---------- 1a. Descarga Overpass ---------- */
 
 async function fetchOverpass() {
   if (!REFRESH && existsSync(CACHE_FILE)) {
@@ -180,6 +176,156 @@ async function fetchOverpass() {
     }
   }
   throw new Error("Overpass no disponible: " + (lastErr && lastErr.message));
+}
+
+/* ---------- 1b. Descarga rutas del feed de Renfe ---------- */
+
+async function fetchRenfeRoutes() {
+  if (!REFRESH_ROUTES && existsSync(ROUTES_CACHE_FILE)) {
+    const st = statSync(ROUTES_CACHE_FILE);
+    log(`Usando caché de rutas Renfe: ${ROUTES_CACHE_FILE} (${(st.size / 1e3).toFixed(0)} kB, ${st.mtime.toISOString()})`);
+    return JSON.parse(readFileSync(ROUTES_CACHE_FILE, "utf8"));
+  }
+  mkdirSync(CACHE_DIR, { recursive: true });
+  let lastErr = null;
+  for (let round = 0; round < 3; round++) {
+    if (round > 0) {
+      const waitS = 10 * round;
+      log(`Reintento rutas ${round + 1}/3 en ${waitS} s …`);
+      await new Promise((r) => setTimeout(r, waitS * 1000));
+    }
+    try {
+      log(`Descargando rutas del feed de Renfe: ${RENFE_ROUTES_URL} …`);
+      const resp = await fetch(RENFE_ROUTES_URL, {
+        headers: { "User-Agent": "renfe-tracker-rail-geometry/1.0" },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      const json = JSON.parse(text);
+      if (!json.trenes || !json.trenes.length) throw new Error("respuesta sin trenes");
+      writeFileSync(ROUTES_CACHE_FILE, text);
+      log(`Descargados ${json.trenes.length} trenes (${(text.length / 1e3).toFixed(0)} kB); cacheado.`);
+      return json;
+    } catch (err) {
+      lastErr = err;
+      log(`Fallo descargando rutas: ${err.message}`);
+    }
+  }
+  throw new Error("Feed de rutas Renfe no disponible: " + (lastErr && lastErr.message));
+}
+
+/**
+ * Extrae del feed de rutas:
+ *  - feedStations: Map código → {lat, lon} (coords GPS del propio feed;
+ *    los waypoints de "secuencia" llevan código de estación).
+ *  - pairs: Set de "a-b" (a<b) con todos los pares de paradas
+ *    CONSECUTIVAS en "estaciones". Estos son los segmentos que
+ *    railPathFor() en el cliente encadena (route.stations viene de
+ *    "estaciones", no de "secuencia").
+ */
+function extractStationsAndPairs(routes) {
+  const feedStations = new Map();
+  const pairs = new Set();
+  let trains = 0;
+  for (const t of routes.trenes) {
+    // Coordenadas: las aprendemos de "secuencia" (tiene GPS para cada waypoint).
+    const seq = t.secuencia;
+    if (Array.isArray(seq)) {
+      for (const p of seq) {
+        const c = p && p.c;
+        if (c && isFinite(p.lat) && isFinite(p.lon) && !feedStations.has(c)) {
+          feedStations.set(c, { lat: p.lat, lon: p.lon });
+        }
+      }
+    }
+    // Pares: de "estaciones" (paradas reales del tren, no waypoints intermedios).
+    const est = t.estaciones;
+    if (!Array.isArray(est) || est.length < 2) continue;
+    trains++;
+    for (let i = 0; i < est.length - 1; i++) {
+      const a = est[i].p, b = est[i + 1].p;
+      if (a && b && a !== b) {
+        pairs.add(a < b ? `${a}-${b}` : `${b}-${a}`);
+        // Asegurar que las estaciones de "estaciones" también tienen coordenadas.
+        // Si no aparecen en secuencia, buscar su waypoint más cercano por código.
+        for (const code of [a, b]) {
+          if (!feedStations.has(code) && Array.isArray(seq)) {
+            const wp = seq.find((p) => p && p.c === code);
+            if (wp && isFinite(wp.lat) && isFinite(wp.lon)) {
+              feedStations.set(code, { lat: wp.lat, lon: wp.lon });
+            }
+          }
+        }
+      }
+    }
+  }
+  log(`Feed: ${trains} trenes → ${feedStations.size} estaciones únicas, ${pairs.size} pares consecutivos únicos (de "estaciones")`);
+  return { feedStations, pairs };
+}
+
+/* ---------- 1c. Aliases y nombres ---------- */
+
+/**
+ * Nombres legibles por código del feed:
+ *  1. FEED_STATION_NAMES (verificado empíricamente contra el feed).
+ *  2. AVE_STATIONS solo si sus coords están a <20 km de las del feed
+ *     (guardarraíl contra la colisión de espacios de códigos).
+ */
+function buildStationNames(feedStations, AVE_STATIONS, FEED_STATION_NAMES) {
+  const names = {};
+  let fromFeedMap = 0, fromCatalog = 0;
+  for (const [code, pos] of feedStations) {
+    if (FEED_STATION_NAMES[code]) {
+      names[code] = FEED_STATION_NAMES[code];
+      fromFeedMap++;
+      continue;
+    }
+    const cat = AVE_STATIONS[code];
+    if (cat && haversineKm(cat.lat, cat.lon, pos.lat, pos.lon) < OVERRIDE_GUARD_KM) {
+      names[code] = cat.name;
+      fromCatalog++;
+    }
+  }
+  log(`Nombres: ${fromFeedMap} del mapeo verificado, ${fromCatalog} del catálogo, ${feedStations.size - fromFeedMap - fromCatalog} sin nombre (el cliente enseñará el código)`);
+  return names;
+}
+
+/**
+ * Aliases código-del-feed → código canónico. El espacio canónico ES el
+ * del feed, así que cada código descubierto se mapea a sí mismo.
+ * Además, los códigos del catálogo estático que NO existen en el feed
+ * se resuelven por nombre hacia su código del feed (con guardarraíl de
+ * distancia), para que un cliente que aún use códigos del catálogo
+ * siga encontrando segmento.
+ */
+function buildAliases(feedStations, AVE_STATIONS, FEED_STATION_NAMES) {
+  const aliases = {};
+  for (const code of feedStations.keys()) aliases[code] = code;
+
+  // nombre normalizado → código del feed (solo nombres sin ambigüedad)
+  const feedByName = new Map();
+  for (const feedCode in FEED_STATION_NAMES) {
+    if (!feedStations.has(feedCode)) continue;
+    const key = normName(FEED_STATION_NAMES[feedCode]);
+    if (feedByName.has(key)) feedByName.set(key, null); // ambiguo
+    else feedByName.set(key, feedCode);
+  }
+
+  let mapped = 0, skipped = 0;
+  for (const catCode in AVE_STATIONS) {
+    if (aliases[catCode]) continue; // el código ya existe en el feed: identidad
+    const feedCode = feedByName.get(normName(AVE_STATIONS[catCode].name));
+    if (!feedCode) { skipped++; continue; }
+    const cat = AVE_STATIONS[catCode];
+    const pos = feedStations.get(feedCode);
+    if (haversineKm(cat.lat, cat.lon, pos.lat, pos.lon) < OVERRIDE_GUARD_KM) {
+      aliases[catCode] = feedCode;
+      mapped++;
+    } else skipped++;
+  }
+  log(`Aliases: ${feedStations.size} identidades del feed, ${mapped} códigos del catálogo resueltos por nombre, ${skipped} no resolubles`);
+  return aliases;
 }
 
 /* ---------- 2. Grafo ---------- */
@@ -276,8 +422,10 @@ function buildCSR(graph) {
 /**
  * Coordenadas REALES de andén para estaciones cuyo catálogo estático
  * (js/stations.js) tiene posiciones aproximadas (>1 km de error).
- * Solo se usan para asociar la estación a la vía OSM; el catálogo que
- * pinta el mapa no se toca.
+ * OJO: las claves están en el espacio de códigos del CATÁLOGO, que
+ * colisiona con el del feed (p. ej. 13200 es Segovia-Guiomar en el
+ * catálogo pero Bilbao-Abando en el feed). Por eso cada override solo
+ * se aplica si está a <OVERRIDE_GUARD_KM de las coords del feed.
  */
 const SNAP_OVERRIDES = {
   // Verificadas contra los nodos railway=station de OSM.
@@ -298,14 +446,17 @@ const SNAP_OVERRIDES = {
 
 /**
  * Etiqueta las componentes conexas del grafo (BFS iterativa) y devuelve
- * { comp: Int32Array, giant: idComponenteMayor }. Asociar las estaciones
- * solo a la componente gigante evita que caigan en tramos aislados
- * (apartaderos, vías museo…) desde los que Dijkstra no llega a ningún sitio.
+ * { comp: Int32Array, sizes: Int32Array, giant }. Los snaps solo se
+ * aceptan en componentes de ≥ MIN_COMP_NODES nodos: evita apartaderos
+ * y vías museo aisladas, pero admite redes grandes no conectadas a la
+ * gigante (ancho métrico del norte, etc.); los enlaces de estación las
+ * "pegan" después al resto.
  */
 function connectedComponents(csr) {
   const { n, offsets, targets } = csr;
   const comp = new Int32Array(n).fill(-1);
   const queue = new Int32Array(n);
+  const sizesArr = [];
   let nComp = 0;
   let giant = -1;
   let giantSize = 0;
@@ -324,28 +475,96 @@ function connectedComponents(csr) {
         if (comp[v] === -1) { comp[v] = nComp; queue[tail++] = v; }
       }
     }
+    sizesArr.push(size);
     if (size > giantSize) { giantSize = size; giant = nComp; }
     nComp++;
   }
   log(`Componentes conexas: ${nComp}; la mayor tiene ${giantSize} nodos (${((giantSize / n) * 100).toFixed(1)} %)`);
-  return { comp, giant };
+  return { comp, sizes: Int32Array.from(sizesArr), giant };
 }
 
-function nearestNode(graph, lat, lon, maxKm, comp, giant) {
-  const rad = Math.PI / 180;
-  const cosLat = Math.cos(lat * rad);
-  let best = -1;
-  let bestD2 = Infinity;
-  const { n, lats, lons } = graph;
-  for (let i = 0; i < n; i++) {
-    if (comp[i] !== giant) continue;
-    const dLat = (lats[i] - lat) * 111.32;
-    const dLon = (lons[i] - lon) * 111.32 * cosLat;
-    const d2 = dLat * dLat + dLon * dLon;
-    if (d2 < bestD2) { bestD2 = d2; best = i; }
+/**
+ * Índice espacial de rejilla (celdas de GRID_CELL_DEG grados) sobre los
+ * nodos del grafo. Sustituye la búsqueda O(n) por nodo: con ~270k nodos
+ * y ~1.4k estaciones la fuerza bruta serían ~370M comparaciones.
+ */
+class NodeGrid {
+  constructor(graph) {
+    this.graph = graph;
+    this.cells = new Map(); // "cx:cy" → array de índices de nodo
+    const { n, lats, lons } = graph;
+    for (let i = 0; i < n; i++) {
+      const key = this._key(this._cx(lons[i]), this._cy(lats[i]));
+      let arr = this.cells.get(key);
+      if (!arr) { arr = []; this.cells.set(key, arr); }
+      arr.push(i);
+    }
   }
-  const dKm = Math.sqrt(bestD2);
-  return dKm <= maxKm ? { idx: best, dKm } : { idx: -1, dKm };
+  _cx(lon) { return Math.floor(lon / GRID_CELL_DEG); }
+  _cy(lat) { return Math.floor(lat / GRID_CELL_DEG); }
+  _key(cx, cy) { return cx + ":" + cy; }
+
+  /**
+   * Nodo más cercano a (lat, lon) que cumpla `accept(i)`, a ≤ maxKm.
+   * Explora anillos de celdas crecientes; para cuando el mejor
+   * candidato es más cercano que el borde interior del siguiente anillo.
+   */
+  nearest(lat, lon, maxKm, accept) {
+    const { lats, lons } = this.graph;
+    const rad = Math.PI / 180;
+    const cosLat = Math.cos(lat * rad);
+    const cx0 = this._cx(lon), cy0 = this._cy(lat);
+    const cellKmY = GRID_CELL_DEG * 111.32; // alto de celda en km
+    const maxRing = Math.ceil(maxKm / Math.min(cellKmY, cellKmY * Math.max(cosLat, 0.1))) + 1;
+
+    let best = -1, bestD2 = Infinity;
+    for (let ring = 0; ring <= maxRing; ring++) {
+      // si ya hay candidato más cercano que el borde interior del anillo, listo
+      const innerKm = (ring - 1) * cellKmY * Math.min(1, cosLat);
+      if (best >= 0 && innerKm > 0 && bestD2 <= innerKm * innerKm) break;
+      for (let dx = -ring; dx <= ring; dx++) {
+        for (let dy = -ring; dy <= ring; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue; // solo el anillo
+          const arr = this.cells.get(this._key(cx0 + dx, cy0 + dy));
+          if (!arr) continue;
+          for (const i of arr) {
+            if (accept && !accept(i)) continue;
+            const dLat = (lats[i] - lat) * 111.32;
+            const dLon = (lons[i] - lon) * 111.32 * cosLat;
+            const d2 = dLat * dLat + dLon * dLon;
+            if (d2 < bestD2) { bestD2 = d2; best = i; }
+          }
+        }
+      }
+    }
+    const dKm = Math.sqrt(bestD2);
+    return dKm <= maxKm ? { idx: best, dKm } : { idx: -1, dKm };
+  }
+
+  /** Índices de nodo a ≤ radiusKm de (lat, lon). */
+  within(lat, lon, radiusKm) {
+    const { lats, lons } = this.graph;
+    const rad = Math.PI / 180;
+    const cosLat = Math.cos(lat * rad);
+    const degLat = radiusKm / 111.32;
+    const degLon = radiusKm / (111.32 * Math.max(cosLat, 0.1));
+    const r2 = radiusKm * radiusKm;
+    const out = [];
+    const cxMin = this._cx(lon - degLon), cxMax = this._cx(lon + degLon);
+    const cyMin = this._cy(lat - degLat), cyMax = this._cy(lat + degLat);
+    for (let cx = cxMin; cx <= cxMax; cx++) {
+      for (let cy = cyMin; cy <= cyMax; cy++) {
+        const arr = this.cells.get(this._key(cx, cy));
+        if (!arr) continue;
+        for (const i of arr) {
+          const dLat = (lats[i] - lat) * 111.32;
+          const dLon = (lons[i] - lon) * 111.32 * cosLat;
+          if (dLat * dLat + dLon * dLon <= r2) out.push(i);
+        }
+      }
+    }
+    return out;
+  }
 }
 
 /* ---------- 4. Dijkstra (montículo binario con arrays) ---------- */
@@ -387,13 +606,18 @@ class MinHeap {
   }
 }
 
-/** Dijkstra desde `source`; para cuando todos los `targetSet` están fijados. */
-function dijkstra(csr, source, targetSet) {
+/**
+ * Dijkstra desde `source`; para cuando todos los `targetSet` están
+ * fijados o cuando la distancia supera `maxDist` (evita explorar toda
+ * la componente si algún destino es inalcanzable).
+ */
+function dijkstra(csr, source, targetSet, maxDist) {
   const { n, offsets, targets, weights } = csr;
   const dist = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
   const done = new Uint8Array(n);
   let remaining = targetSet.size;
+  const cap = isFinite(maxDist) ? maxDist : Infinity;
 
   const heap = new MinHeap();
   dist[source] = 0;
@@ -402,6 +626,7 @@ function dijkstra(csr, source, targetSet) {
   while (heap.size && remaining > 0) {
     const [du, u] = heap.pop();
     if (done[u]) continue;
+    if (du > cap) break;
     done[u] = 1;
     if (targetSet.has(u)) remaining--;
     const end = offsets[u + 1];
@@ -491,7 +716,10 @@ async function main() {
   mkdirSync(DATA_DIR, { recursive: true });
 
   const { AVE_STATIONS, FEED_STATION_NAMES } = loadStationCatalog();
-  const aliases = buildAliases(AVE_STATIONS, FEED_STATION_NAMES);
+  const routes = await fetchRenfeRoutes();
+  const { feedStations, pairs } = extractStationsAndPairs(routes);
+  const stationNames = buildStationNames(feedStations, AVE_STATIONS, FEED_STATION_NAMES);
+  const aliases = buildAliases(feedStations, AVE_STATIONS, FEED_STATION_NAMES);
 
   const overpass = await fetchOverpass();
   const graph = buildGraph(overpass);
@@ -526,68 +754,119 @@ async function main() {
   // Liberar la respuesta cruda antes de los Dijkstra.
   overpass.elements = null;
 
-  /* Estación → nodo OSM (solo en la componente conexa principal). */
+  /* Estación → nodo OSM (componentes de ≥ MIN_COMP_NODES nodos). */
   let csr = buildCSR(graph);
-  const { comp, giant } = connectedComponents(csr);
-  const codes = Object.keys(AVE_STATIONS).sort();
-  const stationNode = {}; // código → índice de nodo
+  const { comp, sizes } = connectedComponents(csr);
+  const grid = new NodeGrid(graph);
+  const acceptNode = (i) => sizes[comp[i]] >= MIN_COMP_NODES;
+
+  const codes = [...feedStations.keys()].sort();
+  const stationNode = {}; // código del feed → índice de nodo
   let glueEdges = 0;
+  let snapped = 0, overridden = 0, unsnapped = 0;
+  const tSnap = Date.now();
   for (const code of codes) {
-    const s = SNAP_OVERRIDES[code] || AVE_STATIONS[code];
-    const { idx, dKm } = nearestNode(graph, s.lat, s.lon, MAX_SNAP_KM, comp, giant);
+    const feedPos = feedStations.get(code);
+    let s = feedPos;
+    const ov = SNAP_OVERRIDES[code];
+    if (ov && haversineKm(ov.lat, ov.lon, feedPos.lat, feedPos.lon) < OVERRIDE_GUARD_KM) {
+      s = ov; // el override pertenece de verdad a esta estación
+      overridden++;
+    }
+    const { idx, dKm } = grid.nearest(s.lat, s.lon, MAX_SNAP_KM, acceptNode);
     if (idx < 0) {
-      console.warn(`AVISO: sin nodo OSM a <${MAX_SNAP_KM} km de ${AVE_STATIONS[code].name} (${code}); más cercano a ${dKm.toFixed(2)} km`);
+      console.warn(`AVISO: sin nodo OSM a <${MAX_SNAP_KM} km de ${stationNames[code] || "?"} (${code}); más cercano a ${isFinite(dKm) ? dKm.toFixed(2) : "∞"} km`);
+      unsnapped++;
       continue;
     }
     stationNode[code] = idx;
+    snapped++;
 
     // "Pegado" de estación: enlaza el nodo elegido con todos los nodos
     // ferroviarios cercanos (cualquier componente/ancho de vía).
-    const rad = Math.PI / 180;
-    const cosLat = Math.cos(s.lat * rad);
-    for (let i = 0; i < graph.n; i++) {
+    for (const i of grid.within(s.lat, s.lon, STATION_GLUE_KM)) {
       if (i === idx) continue;
-      const dLat = (graph.lats[i] - s.lat) * 111.32;
-      const dLon = (graph.lons[i] - s.lon) * 111.32 * cosLat;
-      if (dLat * dLat + dLon * dLon <= STATION_GLUE_KM * STATION_GLUE_KM) {
-        graph.eSrc.push(idx); graph.eDst.push(i); graph.eW.push(STATION_GLUE_WEIGHT);
-        graph.eSrc.push(i); graph.eDst.push(idx); graph.eW.push(STATION_GLUE_WEIGHT);
-        glueEdges++;
-      }
+      graph.eSrc.push(idx); graph.eDst.push(i); graph.eW.push(STATION_GLUE_WEIGHT);
+      graph.eSrc.push(i); graph.eDst.push(idx); graph.eW.push(STATION_GLUE_WEIGHT);
+      glueEdges++;
     }
-    log(`  ${code} ${AVE_STATIONS[code].name} → nodo a ${(dKm * 1000).toFixed(0)} m${SNAP_OVERRIDES[code] ? " (coords corregidas)" : ""}`);
   }
+  log(`Snap: ${snapped}/${codes.length} estaciones asociadas a nodo OSM (${overridden} con coords corregidas, ${unsnapped} sin nodo cercano) en ${((Date.now() - tSnap) / 1000).toFixed(1)} s`);
   log(`Enlaces de estación añadidos: ${glueEdges}`);
   csr = buildCSR(graph); // recompactar con los enlaces de estación
 
-  /* Dijkstra desde cada estación; extraer caminos hacia códigos mayores. */
-  const snapped = codes.filter((c) => stationNode[c] !== undefined);
+  /* Dijkstra SOLO entre pares consecutivos. Cada par se asigna al
+   * extremo con más vecinos (los nudos concentran pares) para
+   * minimizar el número de ejecuciones. */
+  const degree = new Map();
+  const validPairs = [];
+  let pairsUnsnapped = 0;
+  for (const key of pairs) {
+    const [a, b] = key.split("-");
+    if (stationNode[a] === undefined || stationNode[b] === undefined) {
+      pairsUnsnapped++;
+      continue;
+    }
+    validPairs.push([a, b]);
+    degree.set(a, (degree.get(a) || 0) + 1);
+    degree.set(b, (degree.get(b) || 0) + 1);
+  }
+  if (pairsUnsnapped) console.warn(`AVISO: ${pairsUnsnapped} pares descartados por estación sin snap`);
+
+  const bySource = new Map(); // código origen → array de códigos destino
+  for (const [a, b] of validPairs) {
+    const da = degree.get(a), db = degree.get(b);
+    const src = da > db || (da === db && a < b) ? a : b;
+    const dst = src === a ? b : a;
+    let arr = bySource.get(src);
+    if (!arr) { arr = []; bySource.set(src, arr); }
+    arr.push(dst);
+  }
+
   const rawPaths = {}; // "a-b" (a<b) → [[lon,lat],…] orientado a→b
   let unreachable = 0;
-
-  for (let i = 0; i < snapped.length - 1; i++) {
-    const a = snapped[i];
-    const targetsCodes = snapped.slice(i + 1);
-    const targetSet = new Set(targetsCodes.map((c) => stationNode[c]));
-    const { dist, prev } = dijkstra(csr, stationNode[a], targetSet);
-    let found = 0;
-    for (const b of targetsCodes) {
-      const tIdx = stationNode[b];
-      if (!isFinite(dist[tIdx])) { unreachable++; continue; }
-      const idxPath = reconstructPath(prev, stationNode[a], tIdx);
-      if (!idxPath || idxPath.length < 2) { unreachable++; continue; }
-      rawPaths[`${a}-${b}`] = idxPath.map((k) => [graph.lons[k], graph.lats[k]]);
-      found++;
+  let runs = 0;
+  const tDij = Date.now();
+  for (const [src, dsts] of bySource) {
+    const sNode = stationNode[src];
+    const targetSet = new Set(dsts.map((c) => stationNode[c]));
+    // Tope de exploración proporcional al destino más lejano en línea recta.
+    const sPos = feedStations.get(src);
+    let maxStraight = 0;
+    for (const c of dsts) {
+      const p = feedStations.get(c);
+      const d = haversineKm(sPos.lat, sPos.lon, p.lat, p.lon);
+      if (d > maxStraight) maxStraight = d;
     }
-    log(`Dijkstra desde ${a} (${AVE_STATIONS[a].name}): ${found}/${targetsCodes.length} destinos`);
+    const cap = maxStraight * DIJKSTRA_CAP_SLACK + 50;
+    const { dist, prev } = dijkstra(csr, sNode, targetSet, cap);
+    runs++;
+    for (const dst of dsts) {
+      const tIdx = stationNode[dst];
+      const key = src < dst ? `${src}-${dst}` : `${dst}-${src}`;
+      if (!isFinite(dist[tIdx])) { unreachable++; continue; }
+      const idxPath = reconstructPath(prev, sNode, tIdx);
+      if (!idxPath || idxPath.length < 2) { unreachable++; continue; }
+      if (src > dst) idxPath.reverse(); // clave "a-b" con a<b, orientada a→b
+      rawPaths[key] = idxPath.map((k) => [graph.lons[k], graph.lats[k]]);
+    }
   }
+  log(`Dijkstra: ${runs} ejecuciones para ${validPairs.length} pares en ${((Date.now() - tDij) / 1000).toFixed(1)} s`);
   if (unreachable) console.warn(`AVISO: ${unreachable} pares sin camino en el grafo`);
 
   /* Simplificar; si el JSON supera el objetivo, subir la tolerancia. */
+  const stationsOut = {};
+  for (const code of codes) {
+    const pos = feedStations.get(code);
+    const entry = { lat: roundCoord(pos.lat), lon: roundCoord(pos.lon) };
+    if (stationNames[code]) entry.name = stationNames[code];
+    stationsOut[code] = entry;
+  }
+
   let tolerance = BASE_TOLERANCE;
   let payload = null;
   let body = "";
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     const segments = {};
     let totalPts = 0;
     for (const key in rawPaths) {
@@ -600,14 +879,9 @@ async function main() {
     }
     payload = {
       generated: new Date().toISOString(),
-      source: "OpenStreetMap (Overpass API), railway=rail, España",
+      source: "OpenStreetMap (Overpass API), railway=rail, España + feed Renfe LD",
       tolerance,
-      stations: Object.fromEntries(
-        snapped.map((c) => {
-          const pos = SNAP_OVERRIDES[c] || AVE_STATIONS[c];
-          return [c, { name: AVE_STATIONS[c].name, lat: pos.lat, lon: pos.lon }];
-        })
-      ),
+      stations: stationsOut,
       aliases,
       segments,
     };

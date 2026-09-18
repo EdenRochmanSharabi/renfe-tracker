@@ -69,7 +69,15 @@ RENFE.Map = (function () {
         if (!json || !json.segments) throw new Error("respuesta sin segmentos");
         railSegments = json.segments;
         railAliases = json.aliases || {};
-        refreshAll(); // re-pintar rutas ya visibles con la vía real
+        if (json.stations) {
+          for (var code in json.stations) {
+            if (!RENFE.dynamicStationCoords[code]) {
+              var s = json.stations[code];
+              RENFE.dynamicStationCoords[code] = { lat: s.lat, lon: s.lon };
+            }
+          }
+        }
+        refreshAll();
       })
       .catch(function (err) {
         console.warn("Geometría ferroviaria no disponible (se usa la del API):", err.message);
