@@ -83,6 +83,9 @@ RENFE.Map = (function () {
         railSegments = json.segments;
         railAliases = json.aliases || {};
         buildStationGraph();
+        // Invalidar cache de polilíneas por tramo (pudo llenarse de
+        // nulls antes de que la geometría estuviera lista).
+        for (var k in segPolyCache) delete segPolyCache[k];
         if (json.stations) {
           for (var code in json.stations) {
             if (!RENFE.dynamicStationCoords[code]) {
@@ -418,7 +421,7 @@ RENFE.Map = (function () {
   function getSegmentPoly(codeA, codeB) {
     var key = codeA + "-" + codeB;
     if (segPolyCache.hasOwnProperty(key)) return segPolyCache[key];
-    if (!railSegments || !railAliases) { segPolyCache[key] = null; return null; }
+    if (!railSegments || !railAliases) return null;
 
     var seg = railSegmentBetween(codeA, codeB);
     if (!seg) {
