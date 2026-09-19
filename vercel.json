@@ -3,7 +3,8 @@
     { "source": "/api/fleet", "destination": "/api/fleet" },
     { "source": "/api/routes", "destination": "/api/routes" },
     { "source": "/api/rail-geometry", "destination": "/api/rail-geometry" },
-    { "source": "/api/history", "destination": "/api/history" }
+    { "source": "/api/history", "destination": "/api/history" },
+    { "source": "/api/record-gps", "destination": "/api/record-gps" }
   ],
   "headers": [
     {
