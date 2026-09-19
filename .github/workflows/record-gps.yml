@@ -1,0 +1,19 @@
+name: Record GPS snapshots
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping GPS endpoint
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://renfe-tracker.vercel.app/api/record-gps?secret=${{ secrets.CRON_SECRET }}")
+          echo "GPS endpoint returned $status"
+          if [ "$status" != "200" ]; then
+            echo "Warning: non-200 response"
+          fi
