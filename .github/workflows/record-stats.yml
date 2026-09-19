@@ -8,11 +8,11 @@ on:
 jobs:
   record:
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
     steps:
       - name: Ping fleet endpoint (triggers stats recording)
         run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" "https://renfe-tracker.vercel.app/api/fleet")
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://renfe-tracker.vercel.app/api/fleet")
           echo "Fleet endpoint returned $status"
           if [ "$status" != "200" ]; then
             echo "Warning: non-200 response"
