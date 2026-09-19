@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   try {
     const key = type === "routes" ? "route_stats" : "delay_stats";
-    const raw = await kv.zrangebyscore(key, from, now, { withScores: false });
+    const raw = await kv.zrange(key, from, now, { byScore: true });
 
     const data = raw.map(entry => {
       if (typeof entry === "string") return JSON.parse(entry);
