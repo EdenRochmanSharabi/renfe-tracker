@@ -816,11 +816,17 @@ aside::before {
 
   .maplibregl-cooperative-gesture-screen { font-size: 12px !important; }
 
-  .narr-grid { grid-template-columns: 1fr; }
-  .narr-header { padding: 32px 18px 18px; }
-  .narr-title { font-size: 22px; }
-  .narr-block { padding: 18px 16px; }
-  .narr-num { font-size: 28px; }
+  .narr-grid { grid-template-columns: 1fr; padding: 0 12px; }
+  .narr-header { padding: 28px 14px 14px; }
+  .narr-title { font-size: 20px; letter-spacing: 0.5px; }
+  .narr-subtitle { font-size: 12px; }
+  .narr-block { padding: 16px 14px; }
+  .narr-num { font-size: 26px; }
+  .narr-label { font-size: 9px; }
+  .narr-text { font-size: 13px; line-height: 1.6; }
+  .narr-chart { height: 200px; }
+  .narr-source { font-size: 8px; }
+  .narr-section-title { font-size: 13px; }
 }
 
 /* ---------- Narrativa: La muerte del ferrocarril ---------- */
