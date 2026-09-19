@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!trains.length) return res.status(200).json({ ok: true, saved: 0 });
+    if (trains.length < 5) return res.status(200).json({ ok: true, saved: 0, skipped: "too few trains" });
 
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
