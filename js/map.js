@@ -94,8 +94,7 @@ RENFE.Map = (function () {
             }
           }
         }
-        // La geometría cambia las rutas dibujadas: reconstruir las
-        // polilíneas y re-proyectar los trenes sobre ellas.
+        if (overlaysReady) setSourceData("network", networkFC());
         for (var i = 0; i < lastTrains.length; i++) {
           updateTrainArcs(lastTrains[i].id);
         }
@@ -544,6 +543,21 @@ RENFE.Map = (function () {
 
   /* ---------- GeoJSON de cada fuente ---------- */
 
+  function networkFC() {
+    if (!railSegments) return emptyFC();
+    var features = [];
+    for (var key in railSegments) {
+      var coords = railSegments[key];
+      if (!coords || coords.length < 2) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: {},
+      });
+    }
+    return { type: "FeatureCollection", features: features };
+  }
+
   function stationsFC() {
     const features = [];
     for (const code in RENFE.AVE_STATIONS) {
@@ -704,6 +718,7 @@ RENFE.Map = (function () {
   /** Vuelca el estado actual a todas las fuentes superpuestas. */
   function refreshAll() {
     if (!overlaysReady) return;
+    if (railSegments) setSourceData("network", networkFC());
     setSourceData("routes", routesFC());
     setSourceData("selroute", selRouteFC());
     setSourceData("selstops", selStopsFC());
@@ -716,11 +731,32 @@ RENFE.Map = (function () {
   /** Añade fuentes y capas propias sobre el estilo base actual.
    *  Se invoca en cada style.load (también tras el fallback). */
   function addOverlays() {
+    map.addSource("network", { type: "geojson", data: emptyFC() });
     map.addSource("routes", { type: "geojson", data: emptyFC() });
     map.addSource("selroute", { type: "geojson", data: emptyFC() });
     map.addSource("stations", { type: "geojson", data: stationsFC() });
     map.addSource("selstops", { type: "geojson", data: emptyFC() });
     map.addSource("trains", { type: "geojson", data: emptyFC() });
+
+    map.addLayer({
+      id: "network-glow", type: "line", source: "network",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "rgba(56, 189, 248, 0.4)",
+        "line-width": 3,
+        "line-blur": 2,
+        "line-opacity": 0.06,
+      },
+    });
+    map.addLayer({
+      id: "network-core", type: "line", source: "network",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "rgba(56, 189, 248, 0.6)",
+        "line-width": 1,
+        "line-opacity": 0.12,
+      },
+    });
 
     // Rutas de todos los trenes: halo difuso + núcleo (color neutro fijo).
     map.addLayer({
