@@ -625,8 +625,8 @@ RENFE.Map = (function () {
     return [lerp(prv.lon, tgt.lon, t), lerp(prv.lat, tgt.lat, t)];
   }
 
-  function inSpain(lon, lat) {
-    return lon >= -10 && lon <= 5 && lat >= 35 && lat <= 44;
+  function inServiceArea(lon, lat) {
+    return lon >= -10 && lon <= 8 && lat >= 35 && lat <= 50;
   }
 
   function trainsFC() {
@@ -634,7 +634,7 @@ RENFE.Map = (function () {
     const features = [];
     for (const t of lastTrains) {
       var coords = livePos(t.id, now) || [t.lon, t.lat];
-      if (!inSpain(coords[0], coords[1])) continue;
+      if (!inServiceArea(coords[0], coords[1])) continue;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: coords },
@@ -934,7 +934,7 @@ RENFE.Map = (function () {
       // Limitado a la España peninsular + Baleares: el sur queda en el
       // Estrecho (35.8°N) para no mostrar el norte de África, y el este
       // en 4.5°E (justo pasada Menorca).
-      maxBounds: [[-15.0, 33.0], [8.0, 47.0]],
+      maxBounds: [[-15.0, 33.0], [10.0, 50.0]],
       attributionControl: { compact: true },
       cooperativeGestures: true,
       locale: {
@@ -1006,7 +1006,7 @@ RENFE.Map = (function () {
     var seen = {};
     for (var i = 0; i < incoming.length; i++) {
       var t = incoming[i];
-      if (!inSpain(t.lon, t.lat)) continue;
+      if (!inServiceArea(t.lon, t.lat)) continue;
       seen[t.id] = true;
       var prev = targetPos[t.id];
       var posChanged = prev && (prev.lon !== t.lon || prev.lat !== t.lat);

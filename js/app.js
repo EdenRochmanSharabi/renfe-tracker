@@ -34,6 +34,7 @@
         const hay =
           t.number.toLowerCase().includes(q) ||
           t.type.toLowerCase().includes(q) ||
+          (t.type + " " + t.number).toLowerCase().includes(q) ||
           RENFE.stationName(t.origin).toLowerCase().includes(q) ||
           RENFE.stationName(t.destination).toLowerCase().includes(q);
         if (!hay) return false;
@@ -450,8 +451,11 @@
     function zoomToTrain(id) {
       searchResults.hidden = true;
       searchActiveIdx = -1;
+      searchInput.value = "";
+      state.filters.search = "";
       const t = state.trains.find((x) => x.id === id);
       if (!t) return;
+      render();
       selectTrain(id);
       var mapWrap = document.getElementById("map-wrap");
       if (mapWrap) mapWrap.scrollIntoView({ behavior: "smooth", block: "start" });
