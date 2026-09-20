@@ -970,6 +970,7 @@ async function main() {
     const pos = feedStations.get(code);
     const entry = { lat: roundCoord(pos.lat), lon: roundCoord(pos.lon) };
     if (stationNames[code]) entry.name = stationNames[code];
+    if (FOREIGN_STATIONS[code]) entry.foreign = true;
     stationsOut[code] = entry;
   }
 

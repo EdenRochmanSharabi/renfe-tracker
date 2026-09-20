@@ -26,6 +26,7 @@ RENFE.Map = (function () {
   // tren esté filtrado y no aparezca en lastRoutes).
   let selRoute = null;
 
+  const foreignStationCodes = {};
   let overlaysReady = false;   // fuentes/capas superpuestas añadidas
   let handlersBound = false;   // eventos delegados registrados
   let usedFallback = false;    // ya se cambió al estilo raster
@@ -91,6 +92,9 @@ RENFE.Map = (function () {
             if (!RENFE.dynamicStationCoords[code]) {
               var s = json.stations[code];
               RENFE.dynamicStationCoords[code] = { lat: s.lat, lon: s.lon };
+            }
+            if (json.stations[code].foreign) {
+              foreignStationCodes[code] = true;
             }
           }
         }
@@ -560,13 +564,27 @@ RENFE.Map = (function () {
 
   function stationsFC() {
     const features = [];
+    const seen = {};
     for (const code in RENFE.AVE_STATIONS) {
       const c = RENFE.stationCoords(code);
       if (!c) continue;
+      seen[code] = true;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [c.lon, c.lat] },
         properties: { name: RENFE.stationName(code) },
+      });
+    }
+    for (const code in foreignStationCodes) {
+      if (seen[code]) continue;
+      var c = RENFE.stationCoords(code);
+      if (!c) continue;
+      var name = RENFE.stationName(code);
+      if (!name || name.indexOf("Estacion ") === 0) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [c.lon, c.lat] },
+        properties: { name: name },
       });
     }
     return { type: "FeatureCollection", features };
@@ -719,6 +737,7 @@ RENFE.Map = (function () {
   function refreshAll() {
     if (!overlaysReady) return;
     if (railSegments) setSourceData("network", networkFC());
+    setSourceData("stations", stationsFC());
     setSourceData("routes", routesFC());
     setSourceData("selroute", selRouteFC());
     setSourceData("selstops", selStopsFC());
