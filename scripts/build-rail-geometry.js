@@ -47,7 +47,7 @@ import vm from "node:vm";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE_DIR = path.join(ROOT, "scripts", ".cache");
-const CACHE_FILE = path.join(CACHE_DIR, "overpass-es-rail.json");
+const CACHE_FILE = path.join(CACHE_DIR, "overpass-es-pt-fr-rail.json");
 const ROUTES_CACHE_FILE = path.join(CACHE_DIR, "renfe-routes.json");
 const DATA_DIR = path.join(ROOT, "data");
 const OUT_NETWORK = path.join(DATA_DIR, "rail-network.json");
@@ -96,11 +96,19 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 const OVERPASS_QUERY = `
-[out:json][timeout:300];
-area["ISO3166-1"="ES"][admin_level=2]->.spain;
+[out:json][timeout:600];
 (
-  way["railway"="rail"](area.spain);
-  way["railway"="narrow_gauge"](area.spain);
+  area["ISO3166-1"="ES"][admin_level=2]->.a;
+  area["ISO3166-1"="PT"][admin_level=2]->.b;
+  area["ISO3166-1"="FR"][admin_level=2]->.c;
+);
+(
+  way["railway"="rail"](area.a);
+  way["railway"="narrow_gauge"](area.a);
+  way["railway"="rail"](area.b);
+  way["railway"="narrow_gauge"](area.b);
+  way["railway"="rail"]["highspeed"="yes"](area.c);
+  way["railway"="rail"](42.0,-2.0,44.0,4.0);
 );
 out geom;
 `;
@@ -153,7 +161,7 @@ async function fetchOverpass() {
     }
     for (const endpoint of OVERPASS_ENDPOINTS) {
       try {
-        log(`Descargando red ferroviaria de España desde ${endpoint} …`);
+        log(`Descargando red ferroviaria de ES+PT+FR desde ${endpoint} …`);
         const resp = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -161,7 +169,7 @@ async function fetchOverpass() {
             "User-Agent": "renfe-tracker-rail-geometry/1.0",
           },
           body: "data=" + encodeURIComponent(OVERPASS_QUERY),
-          signal: AbortSignal.timeout(600000),
+          signal: AbortSignal.timeout(900000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
@@ -877,7 +885,7 @@ async function main() {
     }
     payload = {
       generated: new Date().toISOString(),
-      source: "OpenStreetMap (Overpass API), railway=rail|narrow_gauge, España + feed Renfe LD",
+      source: "OpenStreetMap (Overpass API), railway=rail|narrow_gauge, ES+PT+FR + feed Renfe LD",
       tolerance,
       stations: stationsOut,
       aliases,
