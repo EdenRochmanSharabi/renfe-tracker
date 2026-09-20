@@ -467,7 +467,59 @@ const FOREIGN_STATIONS = {
   "87901": { lat: 43.4551, lon: 5.3173 },  // Aix-en-Provence TGV
   "87912": { lat: 43.4551, lon: 5.3173 },  // Aix-en-Provence TGV (alias)
   "87973": { lat: 43.5953, lon: 3.9243 },  // Montpellier Sud de France
+  // Portugal (Celta Vigo-Porto + inland routes)
+  "94021": { lat: 41.4547, lon: -8.5443 },  // Nine
+  "94033": { lat: 41.6952, lon: -8.8316 },  // Viana do Castelo
+  "94346": { lat: 41.1492, lon: -8.5847 },  // Porto-Campanha
+  "94401": { lat: 38.7146, lon: -9.1220 },  // Lisboa-Santa Apolonia
+  "94404": { lat: 38.7678, lon: -9.0991 },  // Lisboa-Oriente
+  "94428": { lat: 39.4616, lon: -8.4737 },  // Entroncamento
+  "94438": { lat: 39.9165, lon: -8.6302 },  // Pombal
+  "94452": { lat: 40.2247, lon: -8.4405 },  // Coimbra-B
+  "94563": { lat: 40.6061, lon: -6.8292 },  // Vilar Formoso
+  "96122": { lat: 41.5368, lon: -8.6090 },  // Barcelos
+  // Frontera vasca (Irun-Hendaye)
+  "11511": { lat: 43.3177, lon: -1.9769 },  // San Sebastian-Donostia
+  "11515": { lat: 43.3190, lon: -1.9171 },  // Pasaia
+  "11516": { lat: 43.3160, lon: -1.8993 },  // Lezo-Renteria
+  "11602": { lat: 43.3531, lon: -1.7819 },  // Hendaye
+  // Frontera gallega (Tui)
+  "22401": { lat: 42.0658, lon: -8.6226 },  // Tui (Guillarei)
 };
+
+const EXTRA_PAIRS = [
+  // Francia: Lyon - Barcelona (AVE internacional)
+  ["87303", "87810"],  // Lyon Part Dieu - Valence TGV
+  ["87302", "87810"],  // Nimes - Valence TGV
+  ["87173", "87302"],  // Montpellier St Roch - Nimes
+  ["87088", "87173"],  // Narbonne - Montpellier St Roch
+  ["87088", "87374"],  // Narbonne - Perpignan
+  ["04307", "87374"],  // Figueres-Vilafant - Perpignan
+  // Francia: ramales adicionales
+  ["87078", "87088"],  // Beziers - Narbonne
+  ["87176", "87088"],  // Carcassonne - Narbonne
+  ["87079", "87176"],  // Toulouse - Carcassonne
+  ["87175", "87173"],  // Sete - Montpellier
+  ["87287", "87175"],  // Agde - Sete
+  ["87078", "87287"],  // Beziers - Agde
+  ["87302", "87402"],  // Nimes - Avignon TGV
+  ["87089", "87402"],  // Marseille - Avignon TGV
+  // Frontera vasca: San Sebastian - Hendaye
+  ["11505", "11511"],  // Andoain - San Sebastian
+  ["11511", "11515"],  // San Sebastian - Pasaia
+  ["11515", "11516"],  // Pasaia - Lezo-Renteria
+  ["11516", "11602"],  // Lezo-Renteria - Hendaye
+  // Celta: Tui -> Porto
+  ["22401", "94033"],  // Tui - Viana do Castelo
+  ["94033", "96122"],  // Viana do Castelo - Barcelos
+  ["96122", "94021"],  // Barcelos - Nine
+  ["94021", "94346"],  // Nine - Porto-Campanha
+  // Porto - Lisboa (linha do Norte)
+  ["94346", "94452"],  // Porto-Campanha - Coimbra-B
+  ["94452", "94428"],  // Coimbra-B - Entroncamento
+  ["94428", "94404"],  // Entroncamento - Lisboa-Oriente
+  ["94404", "94401"],  // Lisboa-Oriente - Lisboa-Santa Apolonia
+];
 
 const SNAP_OVERRIDES = {
   // Coordenadas verificadas contra nodos railway=station de OSM.
@@ -768,6 +820,13 @@ async function main() {
     }
   }
   if (injected) log(`Inyectadas ${injected} estaciones extranjeras sin coords en el feed`);
+
+  let extraPairsAdded = 0;
+  for (const [a, b] of EXTRA_PAIRS) {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (!pairs.has(key)) { pairs.add(key); extraPairsAdded++; }
+  }
+  if (extraPairsAdded) log(`Inyectados ${extraPairsAdded} pares transfronterizos manuales`);
 
   const stationNames = buildStationNames(feedStations, AVE_STATIONS, FEED_STATION_NAMES);
   const aliases = buildAliases(feedStations, AVE_STATIONS, FEED_STATION_NAMES);

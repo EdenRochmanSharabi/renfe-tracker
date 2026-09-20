@@ -745,7 +745,7 @@ RENFE.Map = (function () {
         "line-color": "rgba(56, 189, 248, 0.6)",
         "line-width": 6,
         "line-blur": 3,
-        "line-opacity": 0.12,
+        "line-opacity": 0.18,
       },
     });
     map.addLayer({
@@ -754,7 +754,7 @@ RENFE.Map = (function () {
       paint: {
         "line-color": "rgba(56, 189, 248, 0.9)",
         "line-width": 2,
-        "line-opacity": 0.45,
+        "line-opacity": 0.65,
       },
     });
 
