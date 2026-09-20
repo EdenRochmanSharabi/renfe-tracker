@@ -742,19 +742,19 @@ RENFE.Map = (function () {
       id: "network-glow", type: "line", source: "network",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": "rgba(56, 189, 248, 0.4)",
-        "line-width": 3,
-        "line-blur": 2,
-        "line-opacity": 0.06,
+        "line-color": "rgba(56, 189, 248, 0.6)",
+        "line-width": 6,
+        "line-blur": 3,
+        "line-opacity": 0.12,
       },
     });
     map.addLayer({
       id: "network-core", type: "line", source: "network",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": "rgba(56, 189, 248, 0.6)",
-        "line-width": 1,
-        "line-opacity": 0.12,
+        "line-color": "rgba(56, 189, 248, 0.9)",
+        "line-width": 2,
+        "line-opacity": 0.45,
       },
     });
 
