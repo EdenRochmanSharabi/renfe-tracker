@@ -254,10 +254,18 @@ RENFE.Charts = (function () {
 
   /** Actualiza la línea de tendencia con instantáneas del histórico. */
   function updateTrend(snapshots, rangeMs) {
-    const rows = downsample(snapshots, 150);
-    trendChart.data.labels = rows.map((s) => fmtLabel(s.t, rangeMs));
-    trendChart.data.datasets[0].data = rows.map((s) => s.total >= 20 ? s.avg : null);
-    trendChart.data.datasets[1].data = rows.map((s) => s.total >= 20 ? s.max : null);
+    var day = snapshots.filter(function (s) { return s.total >= 20; });
+    var spaced = [];
+    for (var i = 0; i < day.length; i++) {
+      if (i > 0 && day[i].t - day[i - 1].t > 3600000) {
+        spaced.push({ t: day[i - 1].t + 300000, avg: null, max: null, gap: true });
+      }
+      spaced.push(day[i]);
+    }
+    var rows = downsample(spaced, 150);
+    trendChart.data.labels = rows.map(function (s) { return s.gap ? "" : fmtLabel(s.t, rangeMs); });
+    trendChart.data.datasets[0].data = rows.map(function (s) { return s.gap ? null : s.avg; });
+    trendChart.data.datasets[1].data = rows.map(function (s) { return s.gap ? null : s.max; });
     trendChart.update("none");
   }
 
