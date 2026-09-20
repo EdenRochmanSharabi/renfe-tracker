@@ -275,25 +275,25 @@ RENFE.Charts = (function () {
     trendChart.update("none");
   }
 
-  const DIST_KEY = "avetracker:v1:dist";
-  let distAccum = null;
-  try {
-    const raw = localStorage.getItem(DIST_KEY);
-    distAccum = raw ? JSON.parse(raw) : [0, 0, 0, 0, 0];
-  } catch (e) {
-    distAccum = [0, 0, 0, 0, 0];
+  let distAccum = [0, 0, 0, 0, 0];
+  let distLoaded = false;
+
+  function loadServerDist() {
+    fetch("/api/history?type=dist")
+      .then(function (r) { return r.json(); })
+      .then(function (json) {
+        if (json.data && json.data.length === 5) {
+          distAccum = json.data;
+          distLoaded = true;
+          distChart.data.datasets[0].data = distAccum.slice();
+          distChart.update("none");
+        }
+      })
+      .catch(function () {});
   }
 
-  function updateDistribution(trains) {
-    for (const t of trains) {
-      const d = t.delay;
-      if (d < 1) distAccum[0]++;
-      else if (d <= 5) distAccum[1]++;
-      else if (d <= 15) distAccum[2]++;
-      else if (d <= 30) distAccum[3]++;
-      else distAccum[4]++;
-    }
-    try { localStorage.setItem(DIST_KEY, JSON.stringify(distAccum)); } catch (e) {}
+  function updateDistribution() {
+    if (!distLoaded) return;
     distChart.data.datasets[0].data = distAccum.slice();
     distChart.update("none");
   }
@@ -306,5 +306,5 @@ RENFE.Charts = (function () {
     routesChart.update("none");
   }
 
-  return { init, updateTrend, updateDistribution, updateWorstRoutes, SURFACE };
+  return { init, loadServerDist, updateTrend, updateDistribution, updateWorstRoutes, SURFACE };
 })();

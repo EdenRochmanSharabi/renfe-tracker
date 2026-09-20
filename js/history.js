@@ -154,30 +154,54 @@ RENFE.History = (function () {
     return snapshots.filter((s) => s.t >= cutoff);
   }
 
-  /**
-   * Peores rutas por retraso medio (entre observaciones retrasadas),
-   * con un mínimo de observaciones para evitar ruido.
-   */
-  function getWorstRoutes(topN, minObs) {
-    minObs = minObs || 10;
-    const rows = [];
-    for (const key in routeHist) {
-      const r = routeHist[key];
-      let n = 0, sum = 0, delayed = 0, max = 0;
-      for (const day in r.days) {
-        const d = r.days[day];
+  let serverRoutes = null;
+
+  function loadServerRoutes() {
+    fetch("/api/history?type=worstroutes&top=20")
+      .then(function (r) { return r.json(); })
+      .then(function (json) {
+        if (json.data && json.data.length) {
+          serverRoutes = json.data.map(function (r) {
+            var parts = r.route.split("-");
+            var label = parts.length === 2
+              ? RENFE.routeLabel(parts[0], parts[1])
+              : r.route;
+            return {
+              key: r.route,
+              label: label,
+              avgDelay: r.avgDelay,
+              pctDelayed: r.pctDelayed,
+              maxDelay: 0,
+              observations: r.n,
+            };
+          });
+        }
+      })
+      .catch(function () {});
+  }
+
+  function getWorstRoutes(topN) {
+    if (serverRoutes && serverRoutes.length) {
+      return serverRoutes.slice(0, topN || 8);
+    }
+    var rows = [];
+    for (var key in routeHist) {
+      var r = routeHist[key];
+      var n = 0, sum = 0, delayed = 0, max = 0;
+      for (var day in r.days) {
+        var d = r.days[day];
         n += d.n;
         sum += d.sum;
         delayed += d.delayed;
         if (d.max > max) max = d.max;
       }
-      if (n < minObs || !delayed) continue;
-      const parts = key.split("-");
-      const liveLabel = parts.length === 2
+      if (n < 10 || !delayed) continue;
+      var parts = key.split("-");
+      var liveLabel = parts.length === 2
         ? RENFE.routeLabel(parts[0], parts[1])
         : r.label;
       rows.push({
-        key,
+        key: key,
         label: liveLabel,
         avgDelay: sum / delayed,
         pctDelayed: (100 * delayed) / n,
@@ -185,7 +209,7 @@ RENFE.History = (function () {
         observations: n,
       });
     }
-    rows.sort((a, b) => b.avgDelay - a.avgDelay);
+    rows.sort(function (a, b) { return b.avgDelay - a.avgDelay; });
     return rows.slice(0, topN || 8);
   }
 
@@ -207,5 +231,6 @@ RENFE.History = (function () {
     getWorstRoutes,
     getTrainHistory,
     coverageDays,
+    loadServerRoutes,
   };
 })();

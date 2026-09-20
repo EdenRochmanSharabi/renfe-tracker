@@ -183,14 +183,12 @@
 
   function renderCharts() {
     RENFE.Charts.updateTrend(RENFE.History.getSnapshots(state.trendRangeMs), state.trendRangeMs);
-    RENFE.Charts.updateDistribution(state.trains);
-    const worst = RENFE.History.getWorstRoutes(8, 10);
+    RENFE.Charts.updateDistribution();
+    const worst = RENFE.History.getWorstRoutes(8);
     RENFE.Charts.updateWorstRoutes(worst);
     renderRoutesTable(worst);
     $("#coverage-note").textContent =
-      RENFE.History.coverageDays() <= 1
-        ? "Historico local: recopilando datos desde hoy."
-        : "Historico local de " + RENFE.History.coverageDays() + " dias.";
+      "Datos historicos del servidor (acumulados desde el primer dia).";
   }
 
   function renderRoutesTable(rows) {
@@ -537,6 +535,39 @@
     });
   }
 
+  function sendTelemetry() {
+    try {
+      var nav = navigator;
+      var s = screen;
+      var body = {
+        lang: (nav.language || "").slice(0, 10),
+        screen: s.width + "x" + s.height,
+        viewport: window.innerWidth + "x" + window.innerHeight,
+        platform: nav.platform || nav.userAgentData && nav.userAgentData.platform || "",
+        browser: detectBrowser(),
+        referrer: document.referrer || "",
+        touch: "ontouchstart" in window || nav.maxTouchPoints > 0,
+        tz: Intl && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : "",
+        connection: nav.connection ? nav.connection.effectiveType || "" : "",
+      };
+      fetch("/api/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function detectBrowser() {
+    var ua = navigator.userAgent || "";
+    if (ua.indexOf("Firefox") > -1) return "Firefox";
+    if (ua.indexOf("Edg/") > -1) return "Edge";
+    if (ua.indexOf("OPR/") > -1 || ua.indexOf("Opera") > -1) return "Opera";
+    if (ua.indexOf("Chrome") > -1) return "Chrome";
+    if (ua.indexOf("Safari") > -1) return "Safari";
+    return "Other";
+  }
+
   function start() {
     RENFE.Map.init("map", (id) => {
       if (id) selectTrain(id);
@@ -545,17 +576,14 @@
     RENFE.Charts.init();
     bindUI();
 
-    if (!RENFE.History.available) {
-      $("#coverage-note").textContent =
-        "localStorage no disponible: el histórico no se guardará entre sesiones.";
-    }
+    RENFE.Charts.loadServerDist();
+    RENFE.History.loadServerRoutes();
+    sendTelemetry();
 
     fetchCycle();
     setInterval(fetchCycle, FLEET_INTERVAL_MS);
-    setInterval(renderStatus, 5000); // refresca el aviso de datos antiguos
+    setInterval(renderStatus, 5000);
 
-    // Red de seguridad: si el feed no responde, no dejar la pantalla de
-    // arranque bloqueando la interfaz.
     setTimeout(dismissBoot, 12000);
   }
 

@@ -83,6 +83,42 @@ async function recordStats(kv, data) {
     pipeline.zadd("delay_stats", { score: ts, member: JSON.stringify({ ts, ...stats }) });
     pipeline.set("last_stats_ts", now);
 
+    // Distribution histogram (accumulate forever)
+    let d0 = 0, d1 = 0, d2 = 0, d3 = 0, d4 = 0;
+    for (const t of trains) {
+      if (t.delay < 1) d0++;
+      else if (t.delay <= 5) d1++;
+      else if (t.delay <= 15) d2++;
+      else if (t.delay <= 30) d3++;
+      else d4++;
+    }
+    pipeline.hincrby("dist:all", "ontime", d0);
+    pipeline.hincrby("dist:all", "low", d1);
+    pipeline.hincrby("dist:all", "med", d2);
+    pipeline.hincrby("dist:all", "high", d3);
+    pipeline.hincrby("dist:all", "extreme", d4);
+
+    // Per-route running aggregates (every recording cycle)
+    const routeAgg = {};
+    for (const t of trains) {
+      const key = t.origin + "-" + t.destination;
+      if (!routeAgg[key]) routeAgg[key] = { n: 0, delayed: 0, sum: 0, max: 0 };
+      const r = routeAgg[key];
+      r.n++;
+      if (t.delay >= 1) {
+        r.delayed++;
+        r.sum += t.delay;
+        if (t.delay > r.max) r.max = t.delay;
+      }
+    }
+    for (const key in routeAgg) {
+      const r = routeAgg[key];
+      const rkey = "ragg:" + key;
+      pipeline.hincrby(rkey, "n", r.n);
+      pipeline.hincrby(rkey, "delayed", r.delayed);
+      pipeline.hincrby(rkey, "sum", r.sum);
+    }
+
     // Route summary every hour (when minute < 2)
     const minute = new Date(now).getMinutes();
     if (minute < 2) {
