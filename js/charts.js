@@ -255,17 +255,23 @@ RENFE.Charts = (function () {
   /** Actualiza la línea de tendencia con instantáneas del histórico. */
   function updateTrend(snapshots, rangeMs) {
     var day = snapshots.filter(function (s) { return s.total >= 20; });
-    var spaced = [];
+    if (!day.length) { trendChart.data.labels = []; trendChart.data.datasets[0].data = []; trendChart.data.datasets[1].data = []; trendChart.update("none"); return; }
+    var segments = [[]];
     for (var i = 0; i < day.length; i++) {
-      if (i > 0 && day[i].t - day[i - 1].t > 3600000) {
-        spaced.push({ t: day[i - 1].t + 300000, avg: null, max: null, gap: true });
-      }
-      spaced.push(day[i]);
+      if (i > 0 && day[i].t - day[i - 1].t > 3600000) segments.push([]);
+      segments[segments.length - 1].push(day[i]);
     }
-    var rows = downsample(spaced, 150);
-    trendChart.data.labels = rows.map(function (s) { return s.gap ? "" : fmtLabel(s.t, rangeMs); });
-    trendChart.data.datasets[0].data = rows.map(function (s) { return s.gap ? null : s.avg; });
-    trendChart.data.datasets[1].data = rows.map(function (s) { return s.gap ? null : s.max; });
+    var budget = Math.max(30, 150 - segments.length);
+    var rows = [];
+    for (var s = 0; s < segments.length; s++) {
+      if (s > 0) rows.push({ gap: true });
+      var share = Math.max(2, Math.round(budget * segments[s].length / day.length));
+      var ds = downsample(segments[s], share);
+      for (var j = 0; j < ds.length; j++) rows.push(ds[j]);
+    }
+    trendChart.data.labels = rows.map(function (r) { return r.gap ? "" : fmtLabel(r.t, rangeMs); });
+    trendChart.data.datasets[0].data = rows.map(function (r) { return r.gap ? null : r.avg; });
+    trendChart.data.datasets[1].data = rows.map(function (r) { return r.gap ? null : r.max; });
     trendChart.update("none");
   }
 
