@@ -25,8 +25,8 @@ export default async function handler(req, res) {
       const delay = parseInt(t.ultRetraso, 10);
       trains.push({
         id: String(t.codComercial || t.codCirculacion || ""),
-        lat: +lat.toFixed(5),
-        lon: +lon.toFixed(5),
+        lat: Math.round(lat * 100000),
+        lon: Math.round(lon * 100000),
         d: isFinite(delay) ? delay : 0,
         o: String(t.codOrigen || ""),
         dst: String(t.codDestino || ""),
