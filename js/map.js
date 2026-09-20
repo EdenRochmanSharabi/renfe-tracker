@@ -1071,7 +1071,12 @@ RENFE.Map = (function () {
     refreshAll();
 
     if (id && train) {
-      map.easeTo({ center: [train.lon, train.lat], duration: 600 });
+      var zoom = map.getZoom();
+      map.flyTo({
+        center: [train.lon, train.lat],
+        zoom: Math.max(zoom, 8),
+        duration: 1000,
+      });
     }
   }
 

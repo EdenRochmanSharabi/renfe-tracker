@@ -47,8 +47,11 @@
       <label class="check">
         <input type="checkbox" id="filter-delayed"> Solo retrasados
       </label>
-      <input type="search" id="filter-search" placeholder="Buscar tren o estación…"
-             aria-label="Buscar por número de tren o estación">
+      <div class="search-wrap">
+        <input type="search" id="filter-search" placeholder="Buscar tren o estacion…"
+               aria-label="Buscar por numero de tren o estacion">
+        <ul id="search-results" class="search-results" hidden></ul>
+      </div>
     </div>
   </header>
 

@@ -397,9 +397,106 @@
       state.filters.onlyDelayed = e.target.checked;
       render();
     });
-    $("#filter-search").addEventListener("input", (e) => {
+    const searchInput = $("#filter-search");
+    const searchResults = $("#search-results");
+    let searchActiveIdx = -1;
+
+    function showSearchResults() {
+      const q = state.filters.search.trim().toLowerCase();
+      if (!q || q.length < 2) {
+        searchResults.hidden = true;
+        searchActiveIdx = -1;
+        return;
+      }
+      const matches = state.trains.filter((t) => {
+        return (
+          t.number.toLowerCase().includes(q) ||
+          t.type.toLowerCase().includes(q) ||
+          (t.type + " " + t.number).toLowerCase().includes(q) ||
+          RENFE.stationName(t.origin).toLowerCase().includes(q) ||
+          RENFE.stationName(t.destination).toLowerCase().includes(q)
+        );
+      }).slice(0, 8);
+
+      if (!matches.length) {
+        searchResults.innerHTML = '<li style="cursor:default;color:var(--muted)">Sin resultados</li>';
+        searchResults.hidden = false;
+        searchActiveIdx = -1;
+        return;
+      }
+
+      searchResults.innerHTML = matches.map((t, i) => {
+        const st = RENFE.delayState(t.delay);
+        const delayColor = st === "ok" ? "var(--good)" : st === "warn" ? "var(--warn)" : "var(--crit)";
+        return (
+          '<li data-id="' + t.id + '"' + (i === searchActiveIdx ? ' class="active"' : '') + '>' +
+          '<span class="sr-type">' + t.type + ' ' + t.number + '</span>' +
+          '<span class="sr-route">' + RENFE.routeLabel(t.origin, t.destination) + '</span>' +
+          '<span class="sr-delay" style="color:' + delayColor + '">' + RENFE.delayLabel(t.delay) + '</span>' +
+          '</li>'
+        );
+      }).join("");
+
+      searchResults.hidden = false;
+
+      searchResults.querySelectorAll("li[data-id]").forEach((li) => {
+        li.addEventListener("click", () => {
+          const id = li.getAttribute("data-id");
+          zoomToTrain(id);
+        });
+      });
+    }
+
+    function zoomToTrain(id) {
+      searchResults.hidden = true;
+      searchActiveIdx = -1;
+      const t = state.trains.find((x) => x.id === id);
+      if (!t) return;
+      selectTrain(id);
+      var mapWrap = document.getElementById("map-wrap");
+      if (mapWrap) mapWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    searchInput.addEventListener("input", (e) => {
       state.filters.search = e.target.value;
+      searchActiveIdx = -1;
+      showSearchResults();
       render();
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      const items = searchResults.querySelectorAll("li[data-id]");
+      if (!items.length || searchResults.hidden) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        searchActiveIdx = Math.min(searchActiveIdx + 1, items.length - 1);
+        items.forEach((li, i) => li.classList.toggle("active", i === searchActiveIdx));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        searchActiveIdx = Math.max(searchActiveIdx - 1, 0);
+        items.forEach((li, i) => li.classList.toggle("active", i === searchActiveIdx));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const idx = searchActiveIdx >= 0 ? searchActiveIdx : 0;
+        if (items[idx]) {
+          zoomToTrain(items[idx].getAttribute("data-id"));
+          searchInput.blur();
+        }
+      } else if (e.key === "Escape") {
+        searchResults.hidden = true;
+        searchActiveIdx = -1;
+      }
+    });
+
+    searchInput.addEventListener("focus", () => {
+      if (state.filters.search.trim().length >= 2) showSearchResults();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".search-wrap")) {
+        searchResults.hidden = true;
+        searchActiveIdx = -1;
+      }
     });
     $("#det-close").addEventListener("click", closeDetails);
 
