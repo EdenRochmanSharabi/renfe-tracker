@@ -88,6 +88,7 @@ RENFE.Charts = (function () {
             pointHoverRadius: 4,
             pointHoverBackgroundColor: SERIES_CYAN,
             tension: 0.25,
+            spanGaps: false,
           },
           {
             label: "Retraso máximo (min)",
@@ -99,6 +100,7 @@ RENFE.Charts = (function () {
             pointHoverRadius: 4,
             pointHoverBackgroundColor: SERIES_RED,
             tension: 0.25,
+            spanGaps: false,
           },
         ],
       },
@@ -252,11 +254,10 @@ RENFE.Charts = (function () {
 
   /** Actualiza la línea de tendencia con instantáneas del histórico. */
   function updateTrend(snapshots, rangeMs) {
-    const filtered = snapshots.filter((s) => s.total >= 20);
-    const rows = downsample(filtered, 150);
+    const rows = downsample(snapshots, 150);
     trendChart.data.labels = rows.map((s) => fmtLabel(s.t, rangeMs));
-    trendChart.data.datasets[0].data = rows.map((s) => s.avg);
-    trendChart.data.datasets[1].data = rows.map((s) => s.max);
+    trendChart.data.datasets[0].data = rows.map((s) => s.total >= 20 ? s.avg : null);
+    trendChart.data.datasets[1].data = rows.map((s) => s.total >= 20 ? s.max : null);
     trendChart.update("none");
   }
 
