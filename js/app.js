@@ -307,7 +307,12 @@
         byHour[key].total.push(e.total);
       }
 
-      const labels = Object.keys(byHour).sort();
+      const allLabels = Object.keys(byHour).sort();
+      const labels = allLabels.filter((k) => {
+        const arr = byHour[k].total;
+        var avg = arr.reduce((s, v) => s + v, 0) / arr.length;
+        return avg >= 20;
+      });
       const delayedData = labels.map((k) => {
         const arr = byHour[k].delayed;
         return Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
