@@ -188,8 +188,8 @@
     renderRoutesTable(worst);
     $("#coverage-note").textContent =
       RENFE.History.coverageDays() <= 1
-        ? "Histórico local: recopilando datos desde hoy (se conservan 7 días)."
-        : "Histórico local de los últimos " + RENFE.History.coverageDays() + " días.";
+        ? "Historico local: recopilando datos desde hoy."
+        : "Historico local de " + RENFE.History.coverageDays() + " dias.";
   }
 
   function renderRoutesTable(rows) {

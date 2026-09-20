@@ -1,7 +1,7 @@
 /* ===========================================================
  * history.js — Persistencia histórica en localStorage
  * Instantáneas globales, retrasos por tren y agregados por ruta.
- * Retención: 7 días. Escritura tolerante a cuota llena.
+ * Retención: 365 días. Escritura tolerante a cuota llena.
  * =========================================================== */
 "use strict";
 
@@ -13,7 +13,7 @@ RENFE.History = (function () {
     trains: "avetracker:v1:trains",
     routes: "avetracker:v1:routes",
   };
-  const WEEK_MS = 7 * 24 * 3600 * 1000;
+  const WEEK_MS = 365 * 24 * 3600 * 1000;
   const SNAPSHOT_BUCKET_MS = 5 * 60 * 1000; // una instantánea cada 5 min
   const TRAIN_SAMPLE_MS = 10 * 60 * 1000;   // una muestra por tren cada 10 min
   const MAX_TRAIN_SAMPLES = 200;
