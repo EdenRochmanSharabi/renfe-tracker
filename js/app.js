@@ -279,6 +279,109 @@
     RENFE.Map.selectTrain(null, null, null);
   }
 
+  // ---------- Modal historico ----------
+  let delayChart = null;
+
+  function closeDelayModal() {
+    $("#delay-modal").hidden = true;
+  }
+
+  async function openDelayModal(hours) {
+    $("#delay-modal").hidden = false;
+    const canvas = $("#chart-delay-history");
+    try {
+      const resp = await fetch("/api/history?type=stats&hours=" + hours);
+      const json = await resp.json();
+      const entries = json.data || [];
+      if (!entries.length) return;
+
+      const byHour = {};
+      for (const e of entries) {
+        const d = new Date(e.ts * 1000);
+        const key = d.getFullYear() + "-" +
+          String(d.getMonth() + 1).padStart(2, "0") + "-" +
+          String(d.getDate()).padStart(2, "0") + " " +
+          String(d.getHours()).padStart(2, "0") + ":00";
+        if (!byHour[key]) byHour[key] = { delayed: [], total: [] };
+        byHour[key].delayed.push(e.delayed);
+        byHour[key].total.push(e.total);
+      }
+
+      const labels = Object.keys(byHour).sort();
+      const delayedData = labels.map((k) => {
+        const arr = byHour[k].delayed;
+        return Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+      });
+      const totalData = labels.map((k) => {
+        const arr = byHour[k].total;
+        return Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+      });
+      const shortLabels = labels.map((l) => {
+        const parts = l.split(" ");
+        return hours <= 24 ? parts[1] : parts[0].slice(5) + " " + parts[1];
+      });
+
+      if (delayChart) delayChart.destroy();
+      delayChart = new Chart(canvas, {
+        type: "bar",
+        data: {
+          labels: shortLabels,
+          datasets: [
+            {
+              label: "Con retraso",
+              data: delayedData,
+              backgroundColor: "rgba(239, 68, 68, 0.7)",
+              borderColor: "#ef4444",
+              borderWidth: 1,
+            },
+            {
+              label: "Total trenes",
+              data: totalData,
+              backgroundColor: "rgba(56, 189, 248, 0.25)",
+              borderColor: "#38bdf8",
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              labels: { color: "#7b8ba8", font: { size: 10, family: "system-ui" }, boxWidth: 12 },
+            },
+            tooltip: {
+              callbacks: {
+                afterBody: function (items) {
+                  if (items.length >= 2) {
+                    var del = items[0].raw;
+                    var tot = items[1].raw;
+                    return tot ? (del / tot * 100).toFixed(0) + "% con retraso" : "";
+                  }
+                  return "";
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "#4a5568", font: { size: 9 }, maxRotation: 45 },
+              grid: { color: "rgba(56, 189, 248, 0.06)" },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: "#4a5568", font: { size: 9 } },
+              grid: { color: "rgba(56, 189, 248, 0.06)" },
+            },
+          },
+        },
+      });
+    } catch (err) {
+      console.warn("Error loading delay history:", err);
+    }
+  }
+
   // ---------- Arranque ----------
   function bindUI() {
     $("#filter-type").addEventListener("change", (e) => {
@@ -301,6 +404,20 @@
         btn.classList.add("active");
         state.trendRangeMs = parseInt(btn.getAttribute("data-ms"), 10);
         renderCharts();
+      });
+    });
+
+    // Modal de retrasos historicos
+    $("#stat-delayed-card").addEventListener("click", () => openDelayModal(24));
+    $("#delay-modal-close").addEventListener("click", closeDelayModal);
+    $("#delay-modal").addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) closeDelayModal();
+    });
+    document.querySelectorAll("#delay-modal .modal-range button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#delay-modal .modal-range button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        openDelayModal(parseInt(btn.getAttribute("data-hours"), 10));
       });
     });
 
