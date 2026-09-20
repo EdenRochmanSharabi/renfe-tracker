@@ -252,7 +252,8 @@ RENFE.Charts = (function () {
 
   /** Actualiza la línea de tendencia con instantáneas del histórico. */
   function updateTrend(snapshots, rangeMs) {
-    const rows = downsample(snapshots, 150);
+    const filtered = snapshots.filter((s) => s.total >= 20);
+    const rows = downsample(filtered, 150);
     trendChart.data.labels = rows.map((s) => fmtLabel(s.t, rangeMs));
     trendChart.data.datasets[0].data = rows.map((s) => s.avg);
     trendChart.data.datasets[1].data = rows.map((s) => s.max);
