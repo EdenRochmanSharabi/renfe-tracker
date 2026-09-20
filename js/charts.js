@@ -259,18 +259,26 @@ RENFE.Charts = (function () {
     trendChart.update("none");
   }
 
-  /** Actualiza la distribución con la flota actual. */
+  const DIST_KEY = "avetracker:v1:dist";
+  let distAccum = null;
+  try {
+    const raw = localStorage.getItem(DIST_KEY);
+    distAccum = raw ? JSON.parse(raw) : [0, 0, 0, 0, 0];
+  } catch (e) {
+    distAccum = [0, 0, 0, 0, 0];
+  }
+
   function updateDistribution(trains) {
-    const buckets = [0, 0, 0, 0, 0];
     for (const t of trains) {
       const d = t.delay;
-      if (d < 1) buckets[0]++;
-      else if (d <= 5) buckets[1]++;
-      else if (d <= 15) buckets[2]++;
-      else if (d <= 30) buckets[3]++;
-      else buckets[4]++;
+      if (d < 1) distAccum[0]++;
+      else if (d <= 5) distAccum[1]++;
+      else if (d <= 15) distAccum[2]++;
+      else if (d <= 30) distAccum[3]++;
+      else distAccum[4]++;
     }
-    distChart.data.datasets[0].data = buckets;
+    try { localStorage.setItem(DIST_KEY, JSON.stringify(distAccum)); } catch (e) {}
+    distChart.data.datasets[0].data = distAccum.slice();
     distChart.update("none");
   }
 
