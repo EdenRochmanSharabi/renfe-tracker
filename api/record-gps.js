@@ -35,13 +35,14 @@ export default async function handler(req, res) {
       });
     }
 
-    if (trains.length < 5) return res.status(200).json({ ok: true, saved: 0, skipped: "too few trains" });
+    if (!trains.length) return res.status(200).json({ ok: true, saved: 0 });
 
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const dateStr = now.getUTCFullYear() + "-" + pad(now.getUTCMonth() + 1) + "-" + pad(now.getUTCDate());
     const timeStr = pad(now.getUTCHours()) + "-" + pad(now.getUTCMinutes());
-    const path = "gps/" + dateStr + "/" + timeStr + ".json";
+    const folder = trains.length < 20 ? "gps-night" : "gps";
+    const path = folder + "/" + dateStr + "/" + timeStr + ".json";
 
     const content = Buffer.from(JSON.stringify(trains)).toString("base64");
 
