@@ -108,7 +108,7 @@ const OVERPASS_QUERY = `
   way["railway"="rail"](area.b);
   way["railway"="narrow_gauge"](area.b);
   way["railway"="rail"]["highspeed"="yes"](area.c);
-  way["railway"="rail"](42.0,-2.0,44.0,4.0);
+  way["railway"="rail"](42.0,-2.0,46.0,6.0);
 );
 out geom;
 `;
@@ -436,6 +436,39 @@ function buildCSR(graph) {
  * catálogo pero Bilbao-Abando en el feed). Por eso cada override solo
  * se aplica si está a <OVERRIDE_GUARD_KM de las coords del feed.
  */
+/**
+ * Coordenadas de estaciones extranjeras (francesas) que aparecen en rutas
+ * del feed pero cuya "secuencia" no trae waypoints GPS. Sin estas coords
+ * el script no puede asociarlas a nodos OSM y los segmentos
+ * transfronterizos quedan sin trazar. Verificadas contra OSM/Nominatim.
+ */
+const FOREIGN_STATIONS = {
+  "87004": { lat: 47.9265, lon: 1.9069 },  // Les Aubrais-Orleans
+  "87011": { lat: 48.8418, lon: 2.3661 },  // Paris Austerlitz
+  "87013": { lat: 48.8448, lon: 2.3735 },  // Paris Gare de Lyon
+  "87078": { lat: 43.3363, lon: 3.2191 },  // Beziers
+  "87079": { lat: 43.6114, lon: 1.4556 },  // Toulouse Matabiau
+  "87081": { lat: 46.5822, lon: 0.3331 },  // Poitiers
+  "87088": { lat: 43.1893, lon: 3.0053 },  // Narbonne
+  "87089": { lat: 43.3023, lon: 5.3808 },  // Marseille St Charles
+  "87173": { lat: 43.6037, lon: 3.8792 },  // Montpellier St Roch
+  "87175": { lat: 43.4128, lon: 3.6986 },  // Sete
+  "87176": { lat: 43.2181, lon: 2.3518 },  // Carcassonne
+  "87287": { lat: 43.3173, lon: 3.4663 },  // Agde
+  "87300": { lat: 43.6037, lon: 3.8792 },  // Montpellier Saint-Roch (alias)
+  "87302": { lat: 43.8316, lon: 4.3676 },  // Nimes
+  "87303": { lat: 45.7616, lon: 4.8593 },  // Lyon Part Dieu
+  "87374": { lat: 42.6962, lon: 2.8797 },  // Perpignan
+  "87402": { lat: 43.9228, lon: 4.7850 },  // Avignon TGV
+  "87546": { lat: 47.5855, lon: 1.3234 },  // Blois-Chambord
+  "87810": { lat: 44.9919, lon: 4.9784 },  // Valence TGV Rhone-Alpes Sud
+  "87814": { lat: 43.9228, lon: 4.7850 },  // Avignon TGV (alias)
+  "87896": { lat: 43.9228, lon: 4.7850 },  // Avignon TGV (alias)
+  "87901": { lat: 43.4551, lon: 5.3173 },  // Aix-en-Provence TGV
+  "87912": { lat: 43.4551, lon: 5.3173 },  // Aix-en-Provence TGV (alias)
+  "87973": { lat: 43.5953, lon: 3.9243 },  // Montpellier Sud de France
+};
+
 const SNAP_OVERRIDES = {
   // Coordenadas verificadas contra nodos railway=station de OSM.
   // CUIDADO: las claves están en el espacio del CATÁLOGO estático y
@@ -724,6 +757,18 @@ async function main() {
   const { AVE_STATIONS, FEED_STATION_NAMES } = loadStationCatalog();
   const routes = await fetchRenfeRoutes();
   const { feedStations, pairs } = extractStationsAndPairs(routes);
+
+  // Inyectar estaciones extranjeras que no traen coords en la secuencia del feed.
+  let injected = 0;
+  for (const code in FOREIGN_STATIONS) {
+    if (!feedStations.has(code)) {
+      const fs = FOREIGN_STATIONS[code];
+      feedStations.set(code, { lat: fs.lat, lon: fs.lon });
+      injected++;
+    }
+  }
+  if (injected) log(`Inyectadas ${injected} estaciones extranjeras sin coords en el feed`);
+
   const stationNames = buildStationNames(feedStations, AVE_STATIONS, FEED_STATION_NAMES);
   const aliases = buildAliases(feedStations, AVE_STATIONS, FEED_STATION_NAMES);
 
