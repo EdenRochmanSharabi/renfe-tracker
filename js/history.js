@@ -172,9 +172,13 @@ RENFE.History = (function () {
         if (d.max > max) max = d.max;
       }
       if (n < minObs || !delayed) continue;
+      const parts = key.split("-");
+      const liveLabel = parts.length === 2
+        ? RENFE.routeLabel(parts[0], parts[1])
+        : r.label;
       rows.push({
         key,
-        label: r.label,
+        label: liveLabel,
         avgDelay: sum / delayed,
         pctDelayed: (100 * delayed) / n,
         maxDelay: max,
