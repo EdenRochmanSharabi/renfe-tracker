@@ -189,9 +189,6 @@
     <div class="kpi"><div class="kpi-value" id="kpi-visits">--</div><div class="kpi-label">Visitas hoy</div></div>
     <div class="kpi"><div class="kpi-value" id="kpi-unique">--</div><div class="kpi-label">Unicos hoy</div></div>
     <div class="kpi"><div class="kpi-value" id="kpi-countries">--</div><div class="kpi-label">Paises</div></div>
-    <div class="kpi"><div class="kpi-value" id="kpi-observations">--</div><div class="kpi-label">Obs. retraso</div></div>
-    <div class="kpi"><div class="kpi-value" id="kpi-routes">--</div><div class="kpi-label">Rutas rastreadas</div></div>
-    <div class="kpi"><div class="kpi-value" id="kpi-snapshots">--</div><div class="kpi-label">Snapshots 24h</div></div>
   </div>
 
   <div class="section-title">Telemetria de visitantes</div>
@@ -223,20 +220,8 @@
       <table id="tbl-screens"><thead><tr><th>Resolucion</th><th>Visitas</th><th></th></tr></thead><tbody></tbody></table>
     </div>
     <div class="card">
-      <div class="card-title">Distribucion historica de retrasos</div>
-      <div class="chart-wrap"><canvas id="chart-dist"></canvas></div>
-    </div>
-  </div>
-
-  <div class="section-title">Datos del servidor</div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">Peores rutas (acumulado)</div>
-      <table id="tbl-routes"><thead><tr><th>Ruta</th><th class="td-num">Media</th><th class="td-num">% Retraso</th><th class="td-num">Obs</th></tr></thead><tbody></tbody></table>
-    </div>
-    <div class="card">
-      <div class="card-title">Tendencia 24h</div>
-      <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+      <div class="card-title">Referrers</div>
+      <table id="tbl-referrers"><thead><tr><th>Origen</th><th>Visitas</th><th></th></tr></thead><tbody></tbody></table>
     </div>
   </div>
 
@@ -320,114 +305,29 @@
     });
   }
 
-  function renderDistChart(dist) {
-    var labels = ["En hora", "1-5 min", "5-15 min", "15-30 min", ">30 min"];
-    var colors = [GOOD, WARN, CRIT, CRIT, CRIT];
-    new Chart($("chart-dist"), {
-      type: "bar",
-      data: {
-        labels: labels,
-        datasets: [{ data: dist, backgroundColor: colors, borderRadius: 4, maxBarThickness: 40 }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: INK_MUTED } },
-          y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK_MUTED, precision: 0 } },
-        },
-      },
-    });
-  }
-
-  function renderTrendChart(data) {
-    var filtered = data.filter(function (e) { return e.total >= 20; });
-    if (!filtered.length) return;
-    var step = Math.max(1, Math.floor(filtered.length / 120));
-    var sampled = filtered.filter(function (_, i) { return i % step === 0; });
-    var labels = sampled.map(function (e) {
-      var d = new Date(e.ts * 1000);
-      return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-    });
-    new Chart($("chart-trend"), {
-      type: "line",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: "Retraso medio",
-            data: sampled.map(function (e) { return e.avgDelay; }),
-            borderColor: ACCENT, backgroundColor: "rgba(56,189,248,0.1)",
-            fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
-          },
-          {
-            label: "Maximo",
-            data: sampled.map(function (e) { return e.maxDelay; }),
-            borderColor: CRIT, borderWidth: 1.5, pointRadius: 0, tension: 0.3,
-          },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { labels: { boxWidth: 10, font: { size: 10 }, color: INK_MUTED } },
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: INK_MUTED } },
-          y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK_MUTED } },
-        },
-      },
-    });
-  }
-
-  function renderRoutesTable(routes) {
-    var tbody = $("tbl-routes").querySelector("tbody");
-    if (!routes.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">Acumulando datos...</td></tr>'; return; }
-    tbody.innerHTML = routes.map(function (r) {
-      return '<tr><td>' + r.route + '</td><td class="td-num">' + r.avgDelay.toFixed(1) + '\'</td><td class="td-num">' + r.pctDelayed.toFixed(0) + '%</td><td class="td-num">' + r.n + '</td></tr>';
-    }).join("");
-  }
-
   function load() {
-    var promises = [
-      fetch("/api/history?type=analytics").then(function (r) { return r.json(); }),
-      fetch("/api/history?type=dist").then(function (r) { return r.json(); }),
-      fetch("/api/history?type=worstroutes&top=15").then(function (r) { return r.json(); }),
-      fetch("/api/history?type=stats&hours=24").then(function (r) { return r.json(); }),
-    ];
+    fetch("/api/history?type=analytics")
+      .then(function (r) { return r.json(); })
+      .then(function (json) {
+        var analytics = json.data || {};
+        var daily = analytics.daily || {};
+        var today = new Date().toISOString().slice(0, 10);
 
-    Promise.all(promises).then(function (results) {
-      var analytics = results[0].data || {};
-      var dist = results[1].data || [0,0,0,0,0];
-      var routes = results[2].data || [];
-      var stats = results[3].data || [];
+        $("kpi-visits").textContent = daily[today] || 0;
+        $("kpi-unique").textContent = analytics.uniqueToday || 0;
+        $("kpi-countries").textContent = Object.keys(analytics.countries || {}).length;
 
-      var daily = analytics.daily || {};
-      var today = new Date().toISOString().slice(0, 10);
-      var visitsToday = daily[today] || 0;
-      var totalObs = dist.reduce(function (s, v) { return s + v; }, 0);
+        renderDailyChart(daily);
+        renderBarTable("tbl-countries", sortedEntries(analytics.countries));
+        renderDoughnut("chart-browsers", sortedEntries(analytics.browsers));
+        renderDoughnut("chart-platforms", sortedEntries(analytics.platforms));
+        renderBarTable("tbl-screens", sortedEntries(analytics.screens));
+        renderBarTable("tbl-referrers", sortedEntries(analytics.referrers));
 
-      $("kpi-visits").textContent = visitsToday;
-      $("kpi-unique").textContent = analytics.uniqueToday || 0;
-      $("kpi-countries").textContent = Object.keys(analytics.countries || {}).length;
-      $("kpi-observations").textContent = totalObs.toLocaleString();
-      $("kpi-routes").textContent = routes.length;
-      $("kpi-snapshots").textContent = stats.length;
-
-      renderDailyChart(daily);
-      renderBarTable("tbl-countries", sortedEntries(analytics.countries));
-      renderDoughnut("chart-browsers", sortedEntries(analytics.browsers));
-      renderDoughnut("chart-platforms", sortedEntries(analytics.platforms));
-      renderBarTable("tbl-screens", sortedEntries(analytics.screens));
-      renderDistChart(dist);
-      renderRoutesTable(routes);
-      renderTrendChart(stats);
-
-      $("refresh-ts").textContent = "Actualizado " + new Date().toLocaleTimeString("es-ES");
-    }).catch(function (err) {
-      console.error("Error loading dashboard:", err);
-    });
+        $("refresh-ts").textContent = "Actualizado " + new Date().toLocaleTimeString("es-ES");
+      }).catch(function (err) {
+        console.error("Error loading dashboard:", err);
+      });
   }
 
   load();

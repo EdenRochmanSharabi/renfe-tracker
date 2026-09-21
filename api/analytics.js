@@ -69,6 +69,7 @@ export default async function handler(req, res) {
     if (body.browser) pipeline.hincrby("analytics:browsers", String(body.browser).slice(0, 30), 1);
     if (body.platform) pipeline.hincrby("analytics:platforms", String(body.platform).slice(0, 30), 1);
     if (body.screen) pipeline.hincrby("analytics:screens", String(body.screen).slice(0, 20), 1);
+    if (body.referrer) pipeline.hincrby("analytics:referrers", String(body.referrer).slice(0, 100), 1);
 
     const oneYearAgo = Math.floor(now / 1000) - 365 * 86400;
     pipeline.zremrangebyscore("visits", 0, oneYearAgo);

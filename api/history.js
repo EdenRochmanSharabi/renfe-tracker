@@ -80,7 +80,8 @@ async function getAnalyticsSummary(kv) {
   pipeline.hgetall("analytics:browsers");
   pipeline.hgetall("analytics:platforms");
   pipeline.hgetall("analytics:screens");
-  const [daily, countries, browsers, platforms, screens] = await pipeline.exec();
+  pipeline.hgetall("analytics:referrers");
+  const [daily, countries, browsers, platforms, screens, referrers] = await pipeline.exec();
 
   const today = new Date().toISOString().slice(0, 10);
   const uniqueToday = await kv.scard("visitors:" + today);
@@ -92,6 +93,7 @@ async function getAnalyticsSummary(kv) {
     browsers: browsers || {},
     platforms: platforms || {},
     screens: screens || {},
+    referrers: referrers || {},
   };
 }
 
