@@ -87,8 +87,22 @@ async function getAnalyticsSummary(kv) {
   const p2 = kv.pipeline();
   p2.scard("visitors:" + today);
   p2.scard("visitors:all");
-  p2.zcard("visits");
-  const [uniqueToday, uniqueAll, totalVisits] = await p2.exec();
+  const [uniqueToday, uniqueAll] = await p2.exec();
+
+  let finalUniqueAll = uniqueAll || 0;
+  if (finalUniqueAll === 0) {
+    const dayKeys = [];
+    let cur = "0";
+    do {
+      const [next, batch] = await kv.scan(cur, { match: "visitors:20*", count: 200 });
+      cur = String(next);
+      dayKeys.push(...batch);
+    } while (cur !== "0");
+    if (dayKeys.length) {
+      await kv.sunionstore("visitors:all", ...dayKeys);
+      finalUniqueAll = await kv.scard("visitors:all");
+    }
+  }
 
   const dailyObj = daily || {};
   const totalFromDaily = Object.values(dailyObj).reduce((s, v) => s + Number(v), 0);
@@ -96,8 +110,8 @@ async function getAnalyticsSummary(kv) {
   return {
     daily: dailyObj,
     uniqueToday: uniqueToday || 0,
-    uniqueAll: uniqueAll || 0,
-    totalVisits: totalFromDaily || totalVisits || 0,
+    uniqueAll: finalUniqueAll,
+    totalVisits: totalFromDaily,
     countries: countries || {},
     browsers: browsers || {},
     platforms: platforms || {},
