@@ -184,11 +184,9 @@
   function renderCharts() {
     RENFE.Charts.updateTrend(RENFE.History.getSnapshots(state.trendRangeMs), state.trendRangeMs);
     RENFE.Charts.updateDistribution();
-    const worst = RENFE.History.getWorstRoutes(8);
+    var worst = RENFE.History.getWorstRoutes(8);
     RENFE.Charts.updateWorstRoutes(worst);
     renderRoutesTable(worst);
-    $("#coverage-note").textContent =
-      "Datos historicos del servidor (acumulados desde el primer dia).";
   }
 
   function renderRoutesTable(rows) {
@@ -264,12 +262,11 @@
         .join("");
     }
 
-    // Mini-histórico del tren (observaciones locales)
-    const hist = RENFE.History.getTrainHistory(t.id);
+    var hist = RENFE.History.getTrainHistory(t.id);
     $("#det-history").textContent = hist.length > 1
-      ? "Observado " + hist.length + " veces; retraso máximo registrado " +
-        Math.max(...hist.map((h) => h.d)) + " min."
-      : "Primera observación de este tren en tu histórico local.";
+      ? "Observado " + hist.length + " veces en esta sesion; retraso max " +
+        Math.max.apply(null, hist.map(function (h) { return h.d; })) + " min."
+      : "";
   }
 
   function closeDetails() {
@@ -507,6 +504,7 @@
         document.querySelectorAll("#trend-range button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         state.trendRangeMs = parseInt(btn.getAttribute("data-ms"), 10);
+        RENFE.History.loadServerSnapshots(Math.max(state.trendRangeMs, 7 * 24 * 3600 * 1000));
         renderCharts();
       });
     });
@@ -568,6 +566,12 @@
     return "Other";
   }
 
+  function refreshServerData() {
+    RENFE.Charts.loadServerDist();
+    RENFE.History.loadServerSnapshots(Math.max(state.trendRangeMs, 7 * 24 * 3600 * 1000));
+    RENFE.History.loadServerRoutes();
+  }
+
   function start() {
     RENFE.Map.init("map", (id) => {
       if (id) selectTrain(id);
@@ -576,13 +580,13 @@
     RENFE.Charts.init();
     bindUI();
 
-    RENFE.Charts.loadServerDist();
-    RENFE.History.loadServerRoutes();
+    refreshServerData();
     sendTelemetry();
 
     fetchCycle();
     setInterval(fetchCycle, FLEET_INTERVAL_MS);
     setInterval(renderStatus, 5000);
+    setInterval(refreshServerData, 5 * 60 * 1000);
 
     setTimeout(dismissBoot, 12000);
   }
