@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - AVE en directo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #04080f;
+      --surface: #0a1628;
+      --surface-2: #0f1f38;
+      --border: rgba(56, 189, 248, 0.08);
+      --border-glow: rgba(56, 189, 248, 0.25);
+      --text: #e0e7ff;
+      --text-2: #7b8ba8;
+      --muted: #4a5568;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.4);
+      --good: #10b981;
+      --warn: #f59e0b;
+      --crit: #ef4444;
+      --radius: 10px;
+      --mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(56,189,248,0.06), transparent 60%), var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+    header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+    header h1 .accent { color: var(--accent); }
+    header .back { color: var(--text-2); text-decoration: none; font-size: 13px; margin-left: auto; }
+    header .back:hover { color: var(--accent); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+    }
+    .kpi-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      text-shadow: 0 0 12px var(--accent-glow);
+    }
+    .kpi-value.good { color: var(--good); text-shadow: 0 0 12px rgba(16,185,129,0.4); }
+    .kpi-value.warn { color: var(--warn); }
+    .kpi-value.crit { color: var(--crit); }
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+
+    .section-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-2);
+      margin: 28px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-2);
+      margin-bottom: 12px;
+    }
+
+    .chart-wrap { position: relative; height: 220px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th {
+      text-align: left;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 7px 8px;
+      border-bottom: 1px solid rgba(56,189,248,0.04);
+      color: var(--text-2);
+    }
+    td:first-child { color: var(--text); }
+    tr:hover td { background: rgba(56,189,248,0.03); }
+    .td-num { font-family: var(--mono); text-align: right; }
+    .td-bar { width: 100%; }
+    .bar-track {
+      height: 6px;
+      background: var(--surface-2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+
+    .empty-msg {
+      color: var(--muted);
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #refresh-ts {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    .visits-chart-wrap { position: relative; height: 180px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📊 <span class="accent">Dashboard</span></h1>
+  <a href="/" class="back">← Volver al mapa</a>
+</header>
+
+<div class="container">
+
+  <div class="kpi-row" id="kpis">
+    <div class="kpi"><div class="kpi-value" id="kpi-visits">--</div><div class="kpi-label">Visitas hoy</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-unique">--</div><div class="kpi-label">Unicos hoy</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-countries">--</div><div class="kpi-label">Paises</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-observations">--</div><div class="kpi-label">Obs. retraso</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-routes">--</div><div class="kpi-label">Rutas rastreadas</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-snapshots">--</div><div class="kpi-label">Snapshots 24h</div></div>
+  </div>
+
+  <div class="section-title">Telemetria de visitantes</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Visitas por dia</div>
+      <div class="visits-chart-wrap"><canvas id="chart-daily"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Paises</div>
+      <table id="tbl-countries"><thead><tr><th>Pais</th><th>Visitas</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-title">Navegadores</div>
+      <div class="chart-wrap"><canvas id="chart-browsers"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Plataformas</div>
+      <div class="chart-wrap"><canvas id="chart-platforms"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-title">Pantallas</div>
+      <table id="tbl-screens"><thead><tr><th>Resolucion</th><th>Visitas</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <div class="card-title">Distribucion historica de retrasos</div>
+      <div class="chart-wrap"><canvas id="chart-dist"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">Datos del servidor</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Peores rutas (acumulado)</div>
+      <table id="tbl-routes"><thead><tr><th>Ruta</th><th class="td-num">Media</th><th class="td-num">% Retraso</th><th class="td-num">Obs</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <div class="card-title">Tendencia 24h</div>
+      <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+    </div>
+  </div>
+
+  <div id="refresh-ts"></div>
+</div>
+
+<script>
+(function () {
+  var MONO = '"JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo, monospace';
+  var INK_MUTED = "#7b8ba8";
+  var GRID = "rgba(123, 139, 168, 0.12)";
+  var ACCENT = "#38bdf8";
+  var GOOD = "#10b981";
+  var WARN = "#f59e0b";
+  var CRIT = "#ef4444";
+
+  Chart.defaults.color = INK_MUTED;
+  Chart.defaults.borderColor = GRID;
+  Chart.defaults.font.family = MONO;
+  Chart.defaults.font.size = 10;
+  Chart.defaults.plugins.tooltip.backgroundColor = "rgba(15, 31, 56, 0.96)";
+  Chart.defaults.plugins.tooltip.titleColor = "#e0e7ff";
+  Chart.defaults.plugins.tooltip.bodyColor = "#e0e7ff";
+  Chart.defaults.plugins.tooltip.borderColor = "rgba(56, 189, 248, 0.25)";
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.animation.duration = 300;
+
+  var PALETTE = [ACCENT, "#a78bfa", GOOD, WARN, CRIT, "#f472b6", "#fb923c", "#34d399", "#818cf8", "#fbbf24"];
+
+  function $(id) { return document.getElementById(id); }
+
+  function sortedEntries(obj) {
+    return Object.entries(obj || {}).sort(function (a, b) { return b[1] - a[1]; });
+  }
+
+  function renderBarTable(tableId, entries) {
+    var tbody = $(tableId).querySelector("tbody");
+    if (!entries.length) { tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">Sin datos</td></tr>'; return; }
+    var maxVal = entries[0][1];
+    tbody.innerHTML = entries.map(function (e) {
+      var pct = maxVal > 0 ? (e[1] / maxVal * 100) : 0;
+      return '<tr><td>' + e[0] + '</td><td class="td-num">' + e[1] + '</td><td class="td-bar"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div></td></tr>';
+    }).join("");
+  }
+
+  function renderDoughnut(canvasId, entries) {
+    var labels = entries.map(function (e) { return e[0]; });
+    var data = entries.map(function (e) { return e[1]; });
+    var colors = labels.map(function (_, i) { return PALETTE[i % PALETTE.length]; });
+    new Chart($(canvasId), {
+      type: "doughnut",
+      data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: "60%",
+        plugins: {
+          legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: INK_MUTED, padding: 8 } },
+        },
+      },
+    });
+  }
+
+  function renderDailyChart(daily) {
+    var entries = Object.entries(daily || {}).sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+    var labels = entries.map(function (e) { return e[0].slice(5); });
+    var data = entries.map(function (e) { return e[1]; });
+    new Chart($("chart-daily"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{ label: "Visitas", data: data, backgroundColor: ACCENT, borderRadius: 4, maxBarThickness: 32 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: INK_MUTED } },
+          y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK_MUTED, precision: 0 } },
+        },
+      },
+    });
+  }
+
+  function renderDistChart(dist) {
+    var labels = ["En hora", "1-5 min", "5-15 min", "15-30 min", ">30 min"];
+    var colors = [GOOD, WARN, CRIT, CRIT, CRIT];
+    new Chart($("chart-dist"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{ data: dist, backgroundColor: colors, borderRadius: 4, maxBarThickness: 40 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: INK_MUTED } },
+          y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK_MUTED, precision: 0 } },
+        },
+      },
+    });
+  }
+
+  function renderTrendChart(data) {
+    var filtered = data.filter(function (e) { return e.total >= 20; });
+    if (!filtered.length) return;
+    var step = Math.max(1, Math.floor(filtered.length / 120));
+    var sampled = filtered.filter(function (_, i) { return i % step === 0; });
+    var labels = sampled.map(function (e) {
+      var d = new Date(e.ts * 1000);
+      return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    });
+    new Chart($("chart-trend"), {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Retraso medio",
+            data: sampled.map(function (e) { return e.avgDelay; }),
+            borderColor: ACCENT, backgroundColor: "rgba(56,189,248,0.1)",
+            fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3,
+          },
+          {
+            label: "Maximo",
+            data: sampled.map(function (e) { return e.maxDelay; }),
+            borderColor: CRIT, borderWidth: 1.5, pointRadius: 0, tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { boxWidth: 10, font: { size: 10 }, color: INK_MUTED } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: INK_MUTED } },
+          y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK_MUTED } },
+        },
+      },
+    });
+  }
+
+  function renderRoutesTable(routes) {
+    var tbody = $("tbl-routes").querySelector("tbody");
+    if (!routes.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">Acumulando datos...</td></tr>'; return; }
+    tbody.innerHTML = routes.map(function (r) {
+      return '<tr><td>' + r.route + '</td><td class="td-num">' + r.avgDelay.toFixed(1) + '\'</td><td class="td-num">' + r.pctDelayed.toFixed(0) + '%</td><td class="td-num">' + r.n + '</td></tr>';
+    }).join("");
+  }
+
+  function load() {
+    var promises = [
+      fetch("/api/history?type=analytics").then(function (r) { return r.json(); }),
+      fetch("/api/history?type=dist").then(function (r) { return r.json(); }),
+      fetch("/api/history?type=worstroutes&top=15").then(function (r) { return r.json(); }),
+      fetch("/api/history?type=stats&hours=24").then(function (r) { return r.json(); }),
+    ];
+
+    Promise.all(promises).then(function (results) {
+      var analytics = results[0].data || {};
+      var dist = results[1].data || [0,0,0,0,0];
+      var routes = results[2].data || [];
+      var stats = results[3].data || [];
+
+      var daily = analytics.daily || {};
+      var today = new Date().toISOString().slice(0, 10);
+      var visitsToday = daily[today] || 0;
+      var totalObs = dist.reduce(function (s, v) { return s + v; }, 0);
+
+      $("kpi-visits").textContent = visitsToday;
+      $("kpi-unique").textContent = analytics.uniqueToday || 0;
+      $("kpi-countries").textContent = Object.keys(analytics.countries || {}).length;
+      $("kpi-observations").textContent = totalObs.toLocaleString();
+      $("kpi-routes").textContent = routes.length;
+      $("kpi-snapshots").textContent = stats.length;
+
+      renderDailyChart(daily);
+      renderBarTable("tbl-countries", sortedEntries(analytics.countries));
+      renderDoughnut("chart-browsers", sortedEntries(analytics.browsers));
+      renderDoughnut("chart-platforms", sortedEntries(analytics.platforms));
+      renderBarTable("tbl-screens", sortedEntries(analytics.screens));
+      renderDistChart(dist);
+      renderRoutesTable(routes);
+      renderTrendChart(stats);
+
+      $("refresh-ts").textContent = "Actualizado " + new Date().toLocaleTimeString("es-ES");
+    }).catch(function (err) {
+      console.error("Error loading dashboard:", err);
+    });
+  }
+
+  load();
+  setInterval(load, 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>
