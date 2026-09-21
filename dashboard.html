@@ -255,6 +255,12 @@
 
   function $(id) { return document.getElementById(id); }
 
+  function esc(s) {
+    var el = document.createElement("span");
+    el.textContent = s;
+    return el.innerHTML;
+  }
+
   function sortedEntries(obj) {
     return Object.entries(obj || {}).sort(function (a, b) { return b[1] - a[1]; });
   }
@@ -265,7 +271,7 @@
     var maxVal = entries[0][1];
     tbody.innerHTML = entries.map(function (e) {
       var pct = maxVal > 0 ? (e[1] / maxVal * 100) : 0;
-      return '<tr><td>' + e[0] + '</td><td class="td-num">' + e[1] + '</td><td class="td-bar"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div></td></tr>';
+      return '<tr><td>' + esc(e[0]) + '</td><td class="td-num">' + esc(String(e[1])) + '</td><td class="td-bar"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div></td></tr>';
     }).join("");
   }
 
@@ -307,8 +313,10 @@
     });
   }
 
+  var DASH_TOKEN = new URLSearchParams(window.location.search).get("t") || "";
+
   function load() {
-    fetch("/api/history?type=analytics")
+    fetch("/api/history?type=analytics&token=" + encodeURIComponent(DASH_TOKEN))
       .then(function (r) { return r.json(); })
       .then(function (json) {
         var analytics = json.data || {};

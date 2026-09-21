@@ -71,8 +71,8 @@ function parseTrains(data) {
 async function recordStats(kv, data) {
   try {
     const now = Date.now();
-    const lastTs = await kv.get("last_stats_ts");
-    if (lastTs && now - Number(lastTs) < 55000) return;
+    const locked = await kv.set("stats_lock", now, { nx: true, px: 55000 });
+    if (!locked) return;
 
     const trains = parseTrains(data);
     if (!trains.length) return;
@@ -81,7 +81,6 @@ async function recordStats(kv, data) {
 
     const pipeline = kv.pipeline();
     pipeline.zadd("delay_stats", { score: ts, member: JSON.stringify({ ts, ...stats }) });
-    pipeline.set("last_stats_ts", now);
 
     // Distribution histogram (accumulate forever)
     let d0 = 0, d1 = 0, d2 = 0, d3 = 0, d4 = 0;
@@ -150,13 +149,12 @@ export default async function handler(req, res) {
     if (!resp.ok) return res.status(resp.status).json({ error: "upstream " + resp.status });
     const data = await resp.json();
 
-    // Record stats in background (don't block the response)
     const kv = getRedis();
     if (kv) {
-      recordStats(kv, data).catch(() => {});
+      await recordStats(kv, data);
     }
 
-    res.setHeader("Cache-Control", "public, max-age=10");
+    res.setHeader("Cache-Control", "public, max-age=10, s-maxage=10");
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(200).json(data);
   } catch (err) {

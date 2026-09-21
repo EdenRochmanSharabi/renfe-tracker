@@ -146,13 +146,18 @@ export default async function handler(req, res) {
       const data = await getRouteAggregates(kv, topN);
       result = { type, count: data.length, data };
     } else if (type === "analytics") {
+      const token = req.query.token || req.headers["x-dash-token"] || "";
+      const expected = process.env.DASH_TOKEN || "";
+      if (!expected || token !== expected) {
+        return res.status(401).json({ error: "unauthorized" });
+      }
       const data = await getAnalyticsSummary(kv);
       result = { type, data };
     } else {
       return res.status(400).json({ error: "unknown type: " + type });
     }
 
-    res.setHeader("Cache-Control", "public, max-age=60");
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(200).json(result);
   } catch (err) {

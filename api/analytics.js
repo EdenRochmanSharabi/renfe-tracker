@@ -40,21 +40,29 @@ export default async function handler(req, res) {
     const city = req.headers["x-vercel-ip-city"] || "";
     const region = req.headers["x-vercel-ip-country-region"] || "";
 
+    function sanitize(s, maxLen) {
+      return String(s || "").replace(/[<>"'&]/g, "").slice(0, maxLen);
+    }
+    const screenVal = sanitize(body.screen, 20);
+    const browserVal = sanitize(body.browser, 30);
+    const platformVal = sanitize(body.platform, 30);
+    const referrerVal = sanitize(body.referrer, 100);
+
     const visit = {
       vid,
       ts: Math.floor(now / 1000),
       country,
       city,
       region,
-      lang: String(body.lang || "").slice(0, 10),
-      screen: String(body.screen || "").slice(0, 20),
-      viewport: String(body.viewport || "").slice(0, 20),
-      platform: String(body.platform || "").slice(0, 30),
-      browser: String(body.browser || "").slice(0, 30),
-      referrer: String(body.referrer || "").slice(0, 200),
+      lang: sanitize(body.lang, 10),
+      screen: screenVal,
+      viewport: sanitize(body.viewport, 20),
+      platform: platformVal,
+      browser: browserVal,
+      referrer: referrerVal,
       touch: !!body.touch,
-      tz: String(body.tz || "").slice(0, 40),
-      connection: String(body.connection || "").slice(0, 10),
+      tz: sanitize(body.tz, 40),
+      connection: sanitize(body.connection, 10),
     };
 
     const pipeline = kv.pipeline();
@@ -67,10 +75,10 @@ export default async function handler(req, res) {
     pipeline.hincrby("visits:hourly", hour, 1);
 
     if (country) pipeline.hincrby("geo:countries", country, 1);
-    if (body.browser) pipeline.hincrby("analytics:browsers", String(body.browser).slice(0, 30), 1);
-    if (body.platform) pipeline.hincrby("analytics:platforms", String(body.platform).slice(0, 30), 1);
-    if (body.screen) pipeline.hincrby("analytics:screens", String(body.screen).slice(0, 20), 1);
-    if (body.referrer) pipeline.hincrby("analytics:referrers", String(body.referrer).slice(0, 100), 1);
+    if (browserVal) pipeline.hincrby("analytics:browsers", browserVal, 1);
+    if (platformVal) pipeline.hincrby("analytics:platforms", platformVal, 1);
+    if (screenVal) pipeline.hincrby("analytics:screens", screenVal, 1);
+    if (referrerVal) pipeline.hincrby("analytics:referrers", referrerVal, 1);
 
     const oneYearAgo = Math.floor(now / 1000) - 365 * 86400;
     pipeline.zremrangebyscore("visits", 0, oneYearAgo);

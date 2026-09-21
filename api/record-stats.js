@@ -26,7 +26,7 @@ async function ghPut(path, token, data, sha, message) {
 }
 
 export default async function handler(req, res) {
-  const secret = req.headers["x-cron-secret"] || req.query.secret;
+  const secret = req.headers["x-cron-secret"];
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: "unauthorized" });
   }
