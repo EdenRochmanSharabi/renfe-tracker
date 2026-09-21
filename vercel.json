@@ -1,4 +1,5 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     { "source": "/api/fleet", "destination": "/api/fleet" },
     { "source": "/api/routes", "destination": "/api/routes" },
