@@ -84,11 +84,20 @@ async function getAnalyticsSummary(kv) {
   const [daily, countries, browsers, platforms, screens, referrers] = await pipeline.exec();
 
   const today = new Date().toISOString().slice(0, 10);
-  const uniqueToday = await kv.scard("visitors:" + today);
+  const p2 = kv.pipeline();
+  p2.scard("visitors:" + today);
+  p2.scard("visitors:all");
+  p2.zcard("visits");
+  const [uniqueToday, uniqueAll, totalVisits] = await p2.exec();
+
+  const dailyObj = daily || {};
+  const totalFromDaily = Object.values(dailyObj).reduce((s, v) => s + Number(v), 0);
 
   return {
-    daily: daily || {},
+    daily: dailyObj,
     uniqueToday: uniqueToday || 0,
+    uniqueAll: uniqueAll || 0,
+    totalVisits: totalFromDaily || totalVisits || 0,
     countries: countries || {},
     browsers: browsers || {},
     platforms: platforms || {},

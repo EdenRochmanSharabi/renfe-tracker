@@ -62,6 +62,7 @@ export default async function handler(req, res) {
     pipeline.zadd("visits", { score: Math.floor(now / 1000), member: JSON.stringify(visit) });
     pipeline.sadd("visitors:" + today, vid);
     pipeline.expire("visitors:" + today, 400 * 86400);
+    pipeline.sadd("visitors:all", vid);
     pipeline.hincrby("visits:daily", today, 1);
     pipeline.hincrby("visits:hourly", hour, 1);
 

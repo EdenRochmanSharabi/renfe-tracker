@@ -186,6 +186,8 @@
 <div class="container">
 
   <div class="kpi-row" id="kpis">
+    <div class="kpi"><div class="kpi-value" id="kpi-total">--</div><div class="kpi-label">Visitas totales</div></div>
+    <div class="kpi"><div class="kpi-value" id="kpi-unique-all">--</div><div class="kpi-label">Unicos totales</div></div>
     <div class="kpi"><div class="kpi-value" id="kpi-visits">--</div><div class="kpi-label">Visitas hoy</div></div>
     <div class="kpi"><div class="kpi-value" id="kpi-unique">--</div><div class="kpi-label">Unicos hoy</div></div>
     <div class="kpi"><div class="kpi-value" id="kpi-countries">--</div><div class="kpi-label">Paises</div></div>
@@ -313,6 +315,8 @@
         var daily = analytics.daily || {};
         var today = new Date().toISOString().slice(0, 10);
 
+        $("kpi-total").textContent = (analytics.totalVisits || 0).toLocaleString();
+        $("kpi-unique-all").textContent = (analytics.uniqueAll || 0).toLocaleString();
         $("kpi-visits").textContent = daily[today] || 0;
         $("kpi-unique").textContent = analytics.uniqueToday || 0;
         $("kpi-countries").textContent = Object.keys(analytics.countries || {}).length;
