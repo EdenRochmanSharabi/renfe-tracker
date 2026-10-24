@@ -1,1 +1,1 @@
-{"snapshots":{"03-20":{"total":1,"delayed":0,"avg":0,"max":-1,"pct":0},"03-35":{"total":3,"delayed":1,"avg":5,"max":5,"pct":33.3},"03-45":{"total":5,"delayed":2,"avg":1.5,"max":2,"pct":40}},"routes":{}}
+{"snapshots":{"03-20":{"total":1,"delayed":0,"avg":0,"max":-1,"pct":0},"03-35":{"total":3,"delayed":1,"avg":5,"max":5,"pct":33.3},"03-45":{"total":5,"delayed":2,"avg":1.5,"max":2,"pct":40},"03-50":{"total":8,"delayed":5,"avg":1.4,"max":3,"pct":62.5}},"routes":{}}
