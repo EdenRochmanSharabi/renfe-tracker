@@ -68,10 +68,15 @@ function parseTrains(data) {
   return trains;
 }
 
+const STATS_INTERVAL_MS = 5 * 60 * 1000;
+let lastAttempt = 0; // per-instance: skips the lock SET on most polls
+
 async function recordStats(kv, data) {
   try {
     const now = Date.now();
-    const locked = await kv.set("stats_lock", now, { nx: true, px: 55000 });
+    if (now - lastAttempt < STATS_INTERVAL_MS) return;
+    lastAttempt = now;
+    const locked = await kv.set("stats_lock", now, { nx: true, px: STATS_INTERVAL_MS - 5000 });
     if (!locked) return;
 
     const trains = parseTrains(data);
@@ -97,35 +102,24 @@ async function recordStats(kv, data) {
     pipeline.hincrby("dist:all", "high", d3);
     pipeline.hincrby("dist:all", "extreme", d4);
 
-    // Per-route running aggregates (every recording cycle)
-    const routeAgg = {};
-    for (const t of trains) {
-      const key = t.origin + "-" + t.destination;
-      if (!routeAgg[key]) routeAgg[key] = { n: 0, delayed: 0, sum: 0, max: 0 };
-      const r = routeAgg[key];
-      r.n++;
-      if (t.delay >= 1) {
-        r.delayed++;
-        r.sum += t.delay;
-        if (t.delay > r.max) r.max = t.delay;
+    // Route summary + per-route aggregates, hourly (ragg:* writes were most of the Redis budget)
+    const lastRouteTs = await kv.get("last_routes_ts");
+    if (!lastRouteTs || now - Number(lastRouteTs) > 55 * 60 * 1000) {
+      const routes = computeRouteStats(trains);
+      pipeline.zadd("route_stats", { score: ts, member: JSON.stringify({ ts, routes }) });
+      pipeline.set("last_routes_ts", now);
+      const routeAgg = {};
+      for (const t of trains) {
+        const key = t.origin + "-" + t.destination;
+        const r = routeAgg[key] || (routeAgg[key] = { n: 0, delayed: 0, sum: 0 });
+        r.n++;
+        if (t.delay >= 1) { r.delayed++; r.sum += t.delay; }
       }
-    }
-    for (const key in routeAgg) {
-      const r = routeAgg[key];
-      const rkey = "ragg:" + key;
-      pipeline.hincrby(rkey, "n", r.n);
-      pipeline.hincrby(rkey, "delayed", r.delayed);
-      pipeline.hincrby(rkey, "sum", r.sum);
-    }
-
-    // Route summary every hour (when minute < 2)
-    const minute = new Date(now).getMinutes();
-    if (minute < 2) {
-      const lastRouteTs = await kv.get("last_routes_ts");
-      if (!lastRouteTs || now - Number(lastRouteTs) > 55 * 60 * 1000) {
-        const routes = computeRouteStats(trains);
-        pipeline.zadd("route_stats", { score: ts, member: JSON.stringify({ ts, routes }) });
-        pipeline.set("last_routes_ts", now);
+      for (const key in routeAgg) {
+        const r = routeAgg[key];
+        pipeline.hincrby("ragg:" + key, "n", r.n);
+        pipeline.hincrby("ragg:" + key, "delayed", r.delayed);
+        pipeline.hincrby("ragg:" + key, "sum", r.sum);
       }
     }
 
