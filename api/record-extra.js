@@ -1,0 +1,105 @@
+// Extra per-capture data kept apart from gps/ (different format, hourly files to stay under
+// the 1 MB limit of the GitHub contents API): station before/next, expected arrival, position
+// timestamp, rolling stock, product, plus weather at a few points of the network.
+const REPO = "https://api.github.com/repos/EdenRochmanSharabi/renfe-tracker/contents/";
+const BRANCH = process.env.DATA_BRANCH || "data";
+const RENFE_URL = "https://tiempo-real.largorecorrido.renfe.com/renfe-visor/flotaLD.json";
+
+// [name, lat, lon]: Madrid-Andalucia corridor first, then the other main hubs
+const POINTS = [
+  ["Madrid", 40.40, -3.69], ["Urda", 39.42, -3.72], ["Ciudad Real", 38.98, -3.93],
+  ["Cordoba", 37.89, -4.79], ["Sevilla", 37.39, -5.97], ["Malaga", 36.72, -4.43],
+  ["Barcelona", 41.38, 2.14], ["Valencia", 39.47, -0.38], ["Zaragoza", 41.66, -0.91],
+  ["Valladolid", 41.65, -4.72], ["Alicante", 38.35, -0.49],
+];
+const WEATHER_VARS = ["temperature_2m", "precipitation", "wind_speed_10m", "wind_gusts_10m", "visibility", "weather_code"];
+
+const pad = (n) => String(n).padStart(2, "0");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function getWeather() {
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + POINTS.map((p) => p[1]).join(",") +
+      "&longitude=" + POINTS.map((p) => p[2]).join(",") + "&current=" + WEATHER_VARS.join(",") +
+      "&wind_speed_unit=kmh&timezone=UTC";
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.map((p) => WEATHER_VARS.map((v) => p.current?.[v] ?? null));
+  } catch {
+    return null; // weather is best effort; train data is still saved
+  }
+}
+
+export default async function handler(req, res) {
+  const secret = req.headers["x-cron-secret"];
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const ghToken = process.env.GH_TOKEN;
+  if (!ghToken) return res.status(500).json({ error: "GH_TOKEN not configured" });
+
+  try {
+    const feed = () => fetch(RENFE_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+    const weatherP = getWeather();
+    let resp;
+    try { resp = await feed(); } catch { await sleep(1000); resp = await feed(); } // transient network error
+    const weather = await weatherP;
+    if (!resp.ok) return res.status(resp.status).json({ error: "upstream " + resp.status });
+    const data = await resp.json();
+
+    const trains = [];
+    for (const t of data.trenes || []) {
+      trains.push([
+        String(t.codComercial || t.codCirculacion || ""),
+        String(t.codEstAnt || ""),
+        String(t.codEstSig || ""),
+        String(t.horaLlegadaSigEst || ""),
+        Number(t.time) || 0,
+        String(t.mat || ""),
+        Number(t.codProduct) || 0,
+      ]);
+    }
+    if (!trains.length) return res.status(200).json({ ok: true, saved: 0 });
+
+    const now = new Date();
+    const dateStr = now.getUTCFullYear() + "-" + pad(now.getUTCMonth() + 1) + "-" + pad(now.getUTCDate());
+    const timeStr = pad(now.getUTCHours()) + "-" + pad(now.getUTCMinutes());
+    const filePath = "extra/" + dateStr + "/" + pad(now.getUTCHours()) + ".json";
+    const capture = { f: data.fechaActualizacion || "", np: (data.trenesNoPosicionados || []).length, tr: trains, w: weather };
+
+    const headers = { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
+    let hour, put, lastErr;
+    // read-modify-write, retried on 409/422 (concurrent commit from record-gps / record-stats)
+    // and on transient network errors
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await sleep(400 + Math.random() * 1200);
+      try {
+        const get = await fetch(REPO + filePath + "?ref=" + BRANCH, { headers, signal: AbortSignal.timeout(10000) });
+        let sha;
+        if (get.ok) {
+          const ex = await get.json();
+          sha = ex.sha;
+          hour = JSON.parse(Buffer.from(ex.content, "base64").toString());
+        } else {
+          hour = { wp: POINTS, wv: WEATHER_VARS, c: {} };
+        }
+        hour.c[timeStr] = capture;
+        const body = {
+          message: "extra " + dateStr + " " + timeStr,
+          content: Buffer.from(JSON.stringify(hour)).toString("base64"),
+          branch: BRANCH,
+        };
+        if (sha) body.sha = sha;
+        put = await fetch(REPO + filePath, { method: "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+        if (put.ok || ![409, 422].includes(put.status)) break;
+      } catch (e) { lastErr = e; put = null; }
+    }
+    if (!put) throw lastErr;
+    if (!put.ok) return res.status(500).json({ error: "github " + put.status, detail: await put.text() });
+
+    return res.status(200).json({ ok: true, saved: trains.length, weather: !!weather, path: filePath, captures: Object.keys(hour.c).length });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
+}

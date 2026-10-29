@@ -101,15 +101,18 @@ export default async function handler(req, res) {
     }
 
     // Read-modify-write; a concurrent commit to the branch (e.g. record-gps) makes the PUT fail, so re-read and retry
-    let daily, ok = false;
+    let daily, ok = false, lastErr;
     for (let attempt = 0; attempt < 4 && !ok; attempt++) {
       if (attempt) await sleep(400 + Math.random() * 1200);
-      const existing = await ghGet(path, ghToken);
-      daily = existing ? existing.data : { snapshots: {}, routes: {} };
-      daily.snapshots[timeStr] = snapshot;
-      if (routes) daily.routes[timeStr] = routes;
-      ok = await ghPut(path, ghToken, daily, existing ? existing.sha : null, "stats " + dateStr + " " + timeStr);
+      try {
+        const existing = await ghGet(path, ghToken);
+        daily = existing ? existing.data : { snapshots: {}, routes: {} };
+        daily.snapshots[timeStr] = snapshot;
+        if (routes) daily.routes[timeStr] = routes;
+        ok = await ghPut(path, ghToken, daily, existing ? existing.sha : null, "stats " + dateStr + " " + timeStr);
+      } catch (e) { lastErr = e; } // transient network error: retry
     }
+    if (!ok && lastErr) throw lastErr;
 
     return res.status(200).json({
       ok: true,
