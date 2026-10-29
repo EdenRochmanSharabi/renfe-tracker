@@ -1,10 +1,11 @@
 const GH_API = "https://api.github.com/repos/EdenRochmanSharabi/renfe-tracker/contents/";
+const BRANCH = process.env.DATA_BRANCH || "data";
 const RENFE_URL = "https://tiempo-real.largorecorrido.renfe.com/renfe-visor/flotaLD.json";
 
 function pad(n) { return String(n).padStart(2, "0"); }
 
 async function ghGet(path, token) {
-  const r = await fetch(GH_API + path + "?ref=data", {
+  const r = await fetch(GH_API + path + "?ref=" + BRANCH, {
     headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" },
     signal: AbortSignal.timeout(10000),
   });
@@ -14,7 +15,7 @@ async function ghGet(path, token) {
 }
 
 async function ghPut(path, token, data, sha, message) {
-  const body = { message, content: Buffer.from(JSON.stringify(data)).toString("base64"), branch: "data" };
+  const body = { message, content: Buffer.from(JSON.stringify(data)).toString("base64"), branch: BRANCH };
   if (sha) body.sha = sha;
   const r = await fetch(GH_API + path, {
     method: "PUT",
@@ -24,6 +25,8 @@ async function ghPut(path, token, data, sha, message) {
   });
   return r.ok;
 }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default async function handler(req, res) {
   const secret = req.headers["x-cron-secret"];
@@ -97,19 +100,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // Read existing daily file
-    const existing = await ghGet(path, ghToken);
-    let daily;
-    if (existing) {
-      daily = existing.data;
-    } else {
-      daily = { snapshots: {}, routes: {} };
+    // Read-modify-write; a concurrent commit to the branch (e.g. record-gps) makes the PUT fail, so re-read and retry
+    let daily, ok = false;
+    for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+      if (attempt) await sleep(400 + Math.random() * 1200);
+      const existing = await ghGet(path, ghToken);
+      daily = existing ? existing.data : { snapshots: {}, routes: {} };
+      daily.snapshots[timeStr] = snapshot;
+      if (routes) daily.routes[timeStr] = routes;
+      ok = await ghPut(path, ghToken, daily, existing ? existing.sha : null, "stats " + dateStr + " " + timeStr);
     }
-
-    daily.snapshots[timeStr] = snapshot;
-    if (routes) daily.routes[timeStr] = routes;
-
-    const ok = await ghPut(path, ghToken, daily, existing ? existing.sha : null, "stats " + dateStr + " " + timeStr);
 
     return res.status(200).json({
       ok: true,

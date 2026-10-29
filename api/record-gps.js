@@ -1,4 +1,5 @@
 const REPO = "https://api.github.com/repos/EdenRochmanSharabi/renfe-tracker/contents/";
+const BRANCH = process.env.DATA_BRANCH || "data";
 
 export default async function handler(req, res) {
   const secret = req.headers["x-cron-secret"];
@@ -48,59 +49,65 @@ export default async function handler(req, res) {
       "Content-Type": "application/json",
     };
 
-    // Fetch existing daily file
-    const getResp = await fetch(REPO + filePath + "?ref=data", {
-      headers: ghHeaders,
-      signal: AbortSignal.timeout(10000),
-    });
+    // Read-modify-write the daily file. A concurrent commit to the branch (e.g. record-stats)
+    // makes GitHub answer 409/422, so re-read and retry instead of dropping the snapshot.
+    let daily, putResp;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 400 + Math.random() * 1200));
+      const getResp = await fetch(REPO + filePath + "?ref=" + BRANCH, {
+        headers: ghHeaders,
+        signal: AbortSignal.timeout(10000),
+      });
 
-    let daily, fileSha;
-    if (getResp.ok) {
-      const existing = await getResp.json();
-      fileSha = existing.sha;
-      daily = JSON.parse(Buffer.from(existing.content, "base64").toString());
-    } else {
-      daily = { s: [], r: [], o: [], p: {} };
-    }
-
-    // Update station dictionary
-    const stationSet = new Set(daily.s);
-    for (const t of trains) {
-      if (t.o && !stationSet.has(t.o)) { stationSet.add(t.o); daily.s.push(t.o); }
-      if (t.dst && !stationSet.has(t.dst)) { stationSet.add(t.dst); daily.s.push(t.dst); }
-    }
-    const sIdx = {};
-    daily.s.forEach((c, i) => { sIdx[c] = i; });
-
-    // Update train order and routes
-    const trainSet = new Set(daily.o);
-    for (const t of trains) {
-      if (!trainSet.has(t.id)) {
-        trainSet.add(t.id);
-        daily.o.push(t.id);
-        daily.r.push([sIdx[t.o] ?? -1, sIdx[t.dst] ?? -1]);
+      let fileSha;
+      if (getResp.ok) {
+        const existing = await getResp.json();
+        fileSha = existing.sha;
+        daily = JSON.parse(Buffer.from(existing.content, "base64").toString());
+      } else {
+        daily = { s: [], r: [], o: [], p: {} };
       }
+
+      // Update station dictionary
+      const stationSet = new Set(daily.s);
+      for (const t of trains) {
+        if (t.o && !stationSet.has(t.o)) { stationSet.add(t.o); daily.s.push(t.o); }
+        if (t.dst && !stationSet.has(t.dst)) { stationSet.add(t.dst); daily.s.push(t.dst); }
+      }
+      const sIdx = {};
+      daily.s.forEach((c, i) => { sIdx[c] = i; });
+
+      // Update train order and routes
+      const trainSet = new Set(daily.o);
+      for (const t of trains) {
+        if (!trainSet.has(t.id)) {
+          trainSet.add(t.id);
+          daily.o.push(t.id);
+          daily.r.push([sIdx[t.o] ?? -1, sIdx[t.dst] ?? -1]);
+        }
+      }
+      const tIdx = {};
+      daily.o.forEach((id, i) => { tIdx[id] = i; });
+
+      // Build snapshot: array indexed by train order, null for absent trains
+      const snap = new Array(daily.o.length).fill(null);
+      for (const t of trains) {
+        snap[tIdx[t.id]] = [t.lat, t.lon, t.d];
+      }
+      daily.p[timeStr] = snap;
+
+      // Write back to GitHub
+      const content = Buffer.from(JSON.stringify(daily)).toString("base64");
+      const body = { message: "gps " + dateStr + " " + timeStr, content, branch: BRANCH };
+      if (fileSha) body.sha = fileSha;
+
+      putResp = await fetch(REPO + filePath, {
+        method: "PUT",
+        headers: ghHeaders,
+        body: JSON.stringify(body),
+      });
+      if (putResp.ok || ![409, 422].includes(putResp.status)) break;
     }
-    const tIdx = {};
-    daily.o.forEach((id, i) => { tIdx[id] = i; });
-
-    // Build snapshot: array indexed by train order, null for absent trains
-    const snap = new Array(daily.o.length).fill(null);
-    for (const t of trains) {
-      snap[tIdx[t.id]] = [t.lat, t.lon, t.d];
-    }
-    daily.p[timeStr] = snap;
-
-    // Write back to GitHub
-    const content = Buffer.from(JSON.stringify(daily)).toString("base64");
-    const body = { message: "gps " + dateStr + " " + timeStr, content, branch: "data" };
-    if (fileSha) body.sha = fileSha;
-
-    const putResp = await fetch(REPO + filePath, {
-      method: "PUT",
-      headers: ghHeaders,
-      body: JSON.stringify(body),
-    });
 
     if (!putResp.ok) {
       const err = await putResp.text();
