@@ -64,7 +64,19 @@ export default async function handler(req, res) {
         if (getResp.ok) {
           const existing = await getResp.json();
           fileSha = existing.sha;
-          daily = JSON.parse(Buffer.from(existing.content, "base64").toString());
+          let text;
+          if (existing.encoding === "none") {
+            // over 1 MB the contents API omits the body: read it with the raw media type
+            const raw = await fetch(REPO + filePath + "?ref=" + BRANCH, {
+              headers: { ...ghHeaders, Accept: "application/vnd.github.raw+json" },
+              signal: AbortSignal.timeout(20000),
+            });
+            if (!raw.ok) throw new Error("raw read " + raw.status);
+            text = await raw.text();
+          } else {
+            text = Buffer.from(existing.content, "base64").toString();
+          }
+          daily = JSON.parse(text);
         } else {
           daily = { s: [], r: [], o: [], p: {} };
         }

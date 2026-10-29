@@ -1,6 +1,7 @@
-// Extra per-capture data kept apart from gps/ (different format, hourly files to stay under
-// the 1 MB limit of the GitHub contents API): station before/next, expected arrival, position
-// timestamp, rolling stock, product, plus weather at a few points of the network.
+// One small file per capture (extra/YYYY-MM-DD/HH-MM.json): nothing is read before writing, so
+// there is no growing daily file and no read-modify-write race with record-gps / record-stats.
+// Per train: position, delay, station before/next, expected arrival, position timestamp, rolling
+// stock and product. Weather at a few points of the network every 15 minutes.
 const REPO = "https://api.github.com/repos/EdenRochmanSharabi/renfe-tracker/contents/";
 const BRANCH = process.env.DATA_BRANCH || "data";
 const RENFE_URL = "https://tiempo-real.largorecorrido.renfe.com/renfe-visor/flotaLD.json";
@@ -40,18 +41,24 @@ export default async function handler(req, res) {
   if (!ghToken) return res.status(500).json({ error: "GH_TOKEN not configured" });
 
   try {
+    const now = new Date();
     const feed = () => fetch(RENFE_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
-    const weatherP = getWeather();
+    const weatherP = now.getUTCMinutes() % 15 === 0 ? getWeather() : Promise.resolve(null);
     let resp;
     try { resp = await feed(); } catch { await sleep(1000); resp = await feed(); } // transient network error
-    const weather = await weatherP;
     if (!resp.ok) return res.status(resp.status).json({ error: "upstream " + resp.status });
     const data = await resp.json();
 
     const trains = [];
     for (const t of data.trenes || []) {
+      const lat = Number(t.latitud), lon = Number(t.longitud);
+      if (!isFinite(lat) || !isFinite(lon)) continue;
+      const delay = parseInt(t.ultRetraso, 10);
       trains.push([
         String(t.codComercial || t.codCirculacion || ""),
+        Math.round(lat * 100000),
+        Math.round(lon * 100000),
+        isFinite(delay) ? delay : 0,
         String(t.codEstAnt || ""),
         String(t.codEstSig || ""),
         String(t.horaLlegadaSigEst || ""),
@@ -62,43 +69,33 @@ export default async function handler(req, res) {
     }
     if (!trains.length) return res.status(200).json({ ok: true, saved: 0 });
 
-    const now = new Date();
+    const weather = await weatherP;
     const dateStr = now.getUTCFullYear() + "-" + pad(now.getUTCMonth() + 1) + "-" + pad(now.getUTCDate());
     const timeStr = pad(now.getUTCHours()) + "-" + pad(now.getUTCMinutes());
-    const filePath = "extra/" + dateStr + "/" + pad(now.getUTCHours()) + ".json";
-    const capture = { f: data.fechaActualizacion || "", np: (data.trenesNoPosicionados || []).length, tr: trains, w: weather };
+    const filePath = "extra/" + dateStr + "/" + timeStr + ".json";
+    const capture = { f: data.fechaActualizacion || "", np: (data.trenesNoPosicionados || []).length, tr: trains };
+    if (weather) { capture.wp = POINTS; capture.wv = WEATHER_VARS; capture.w = weather; }
 
+    const body = JSON.stringify({
+      message: "extra " + dateStr + " " + timeStr,
+      content: Buffer.from(JSON.stringify(capture)).toString("base64"),
+      branch: BRANCH,
+    });
     const headers = { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
-    let hour, put, lastErr;
-    // read-modify-write, retried on 409/422 (concurrent commit from record-gps / record-stats)
-    // and on transient network errors
+    let put, lastErr;
+    // a new file needs no sha; 409 only means another job moved the branch tip meanwhile
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt) await sleep(400 + Math.random() * 1200);
       try {
-        const get = await fetch(REPO + filePath + "?ref=" + BRANCH, { headers, signal: AbortSignal.timeout(10000) });
-        let sha;
-        if (get.ok) {
-          const ex = await get.json();
-          sha = ex.sha;
-          hour = JSON.parse(Buffer.from(ex.content, "base64").toString());
-        } else {
-          hour = { wp: POINTS, wv: WEATHER_VARS, c: {} };
-        }
-        hour.c[timeStr] = capture;
-        const body = {
-          message: "extra " + dateStr + " " + timeStr,
-          content: Buffer.from(JSON.stringify(hour)).toString("base64"),
-          branch: BRANCH,
-        };
-        if (sha) body.sha = sha;
-        put = await fetch(REPO + filePath, { method: "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
-        if (put.ok || ![409, 422].includes(put.status)) break;
+        put = await fetch(REPO + filePath, { method: "PUT", headers, body, signal: AbortSignal.timeout(15000) });
+        if (put.ok || put.status !== 409) break;
       } catch (e) { lastErr = e; put = null; }
     }
     if (!put) throw lastErr;
+    if (put.status === 422) return res.status(200).json({ ok: true, duplicate: true, path: filePath }); // already saved this minute
     if (!put.ok) return res.status(500).json({ error: "github " + put.status, detail: await put.text() });
 
-    return res.status(200).json({ ok: true, saved: trains.length, weather: !!weather, path: filePath, captures: Object.keys(hour.c).length });
+    return res.status(200).json({ ok: true, saved: trains.length, weather: !!weather, path: filePath });
   } catch (err) {
     return res.status(502).json({ error: err.message });
   }
