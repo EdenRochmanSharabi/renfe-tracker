@@ -120,11 +120,38 @@ async function getAnalyticsSummary(kv) {
   };
 }
 
+// Static snapshot built by scripts/build-history-snapshot.mjs; used when Redis is down or over quota.
+// ponytail: stale until the script is re-run, relative to the snapshot's last point, not "now".
+async function fromSnapshot(req, type, hours) {
+  if (!["stats", "dist", "worstroutes"].includes(type)) return null;
+  const r = await fetch("https://" + req.headers.host + "/data/history-snapshot.json");
+  if (!r.ok) return null;
+  const snap = await r.json();
+  if (type === "dist") return { type, fallback: true, data: snap.dist };
+  if (type === "worstroutes") {
+    const topN = Math.min(parseInt(req.query.top, 10) || 20, 50);
+    return { type, fallback: true, count: topN, data: snap.worstroutes.slice(0, topN) };
+  }
+  const end = snap.stats.length ? snap.stats[snap.stats.length - 1].ts : 0;
+  const data = snap.stats.filter((e) => e.ts >= end - hours * 3600);
+  return { type, hours, fallback: true, count: data.length, data };
+}
+
 export default async function handler(req, res) {
   const kv = getRedis();
-  if (!kv) {
-    return res.status(503).json({ error: "storage not configured" });
-  }
+  const type0 = req.query.type || "stats";
+  const hours0 = Math.min(parseInt(req.query.hours, 10) || 24, 8760);
+  const fallback = async (status, msg) => {
+    try {
+      const out = await fromSnapshot(req, type0, hours0);
+      if (out) {
+        res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
+        return res.status(200).json(out);
+      }
+    } catch (e) { /* fall through to the original error */ }
+    return res.status(status).json({ error: msg });
+  };
+  if (!kv) return fallback(503, "storage not configured");
 
   const type = req.query.type || "stats";
   const hours = Math.min(parseInt(req.query.hours, 10) || 24, 8760);
@@ -161,6 +188,6 @@ export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(200).json(result);
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fallback(500, err.message);
   }
 }

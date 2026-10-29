@@ -23,21 +23,58 @@
 </head>
 <body>
   <h1>Accidente de Toledo, 28 de octubre de 2026</h1>
-  <p>Lo que registró este tracker de los trenes de Renfe de larga distancia en la zona, antes, durante y después del choque. Las horas están en <b>UTC</b> (España iba a UTC+1). Según la prensa el choque fue hacia las 8:54 hora española, es decir, <b>07:54 UTC</b>. Hay una captura cada 5 minutos aproximadamente. El Iryo implicado no aparece, porque el feed solo incluye trenes de Renfe.</p>
+  <p>Análisis de lo que registró este tracker de los trenes de Renfe de larga distancia, antes, durante y después del choque. Horas en <b>UTC</b> (hora española = UTC+1). Según la prensa el choque fue hacia las 8:54 hora española, es decir <b>07:54 UTC</b>, cerca de Urda (Toledo), en la línea Madrid-Sevilla. Fuente: <a href="https://cnnespanol.cnn.com/2026/10/28/espana/live-news/accidente-trenes-pasajeros-espana-vivo-trax">CNN en Español</a>. Los datos son el feed público de Renfe, con una captura cada 5 minutos aproximadamente. El Iryo implicado no está en el feed.</p>
 
-  <h2>Retraso de cada tren (minutos)</h2>
+  <h2>Resumen</h2>
+  <ul>
+    <li><b>Antes:</b> la línea ya estaba perturbada. A las 07:15, 39 minutos antes del choque, un Sevilla-Madrid llevaba 35 min de retraso y un Málaga-Madrid 20 min, ambos más al sur del lugar del accidente. Es coherente con la interrupción por el sistema LZB que cuenta la prensa.</li>
+    <li><b>Durante:</b> entre las 07:50 y las 08:00 los trenes Sevilla-Madrid 02061 y 02261 aparecen parados, con 34-35 min de retraso, a pocos kilómetros al sur de Toledo.</li>
+    <li><b>Después:</b> cinco trenes dejan de moverse durante horas: 02061, 02261 y 08081 quedan en 39,270 N (hasta las 11:30 como mínimo), 02080 en 39,549 N desde las 08:00 y 08080 en 39,682 N entre las 08:15 y las 09:05. En el corredor se acumulan hasta 12 trenes a la vez, frente a unos 5 en un día normal, y el retraso medio de toda la flota sube hasta 13 min a las 11:00 UTC (normal: 7). El 29 de octubre circulan entre 70 y 97 trenes en vez de 115-145, con retraso medio de 17 a 28 min.</li>
+    <li><b>Prevención:</b> las señales previas no se distinguen de un día cualquiera (ver más abajo). Con estos datos no habría sido posible anticipar el choque.</li>
+  </ul>
+
+  <h2>Cronología</h2>
+  <ul>
+    <li><b>06:35 a 06:55:</b> tráfico normal en el corredor: 3 a 6 trenes, retraso medio de 3 a 4 min.</li>
+    <li><b>06:55 a 07:15:</b> sin capturas (hueco de la recogida).</li>
+    <li><b>07:15:</b> 02061 (Sevilla-Madrid) con 35 min a la altura de 38,93 N, y 02063 (Málaga-Madrid) con 20 min. El retraso medio del corredor ya es de 15 min.</li>
+    <li><b>07:15 a 07:45:</b> otro hueco de 30 minutos sin capturas.</li>
+    <li><b>07:45:</b> 02261 (Sevilla-Madrid) aparece con 34 min. 02061 sigue con 35 min y entre las 07:45 y las 07:50 no avanza.</li>
+    <li><b>07:54:</b> choque (hora según la prensa).</li>
+    <li><b>07:55 y 08:00:</b> 02080 (Madrid-Sevilla), con 0 min de retraso, figura a 39,428 N a las 07:55 y a 39,549 N, más al norte, a las 08:00. Desde ahí ya no se mueve.</li>
+    <li><b>08:00 a 08:15:</b> hueco de 15 minutos. A las 08:15, 08080 (Madrid-Puertollano) pasa de -2 a 22 min de retraso y se queda en 39,682 N hasta las 09:05. 02261 y 08081 llevan varias capturas casi sin moverse (unos cientos de metros).</li>
+    <li><b>08:30 a 11:30 y más:</b> 02061, 02261 y 08081 quedan fijos en 39,270 N, -3,883 O, y 02080 en 39,549 N, -3,821 O, sin que cambien sus retrasos. El corredor tiene entre 7 y 12 trenes (normal: 4 a 6) con retraso medio de 17 a 29 min según la hora.</li>
+    <li><b>12:00:</b> el corredor se vacía (2 trenes frente a 5 normales). Los trenes retenidos dejan de aparecer en la zona.</li>
+  </ul>
+
+  <h2>Retraso medio de toda la flota, por hora</h2>
+  <div class="card"><div class="box"><canvas id="fleet"></canvas></div></div>
+
+  <h2>Retraso de cada tren del corredor (minutos)</h2>
   <div class="card"><div class="box"><canvas id="delay"></canvas></div></div>
 
   <h2>Posiciones (latitud / longitud)</h2>
   <div class="card"><div class="box"><canvas id="map"></canvas></div></div>
 
-  <h2>Qué muestran los datos</h2>
+  <h2>Trenes presentes en el corredor, por hora</h2>
+  <div class="card"><div class="box"><canvas id="corridor"></canvas></div></div>
+  <p>El corredor es la franja entre 38,9 y 40,0 N y entre 4,2 y 3,5 O. Se muestra la media de trenes por captura en cada hora.</p>
+
+  <h2>¿Se podía prever?</h2>
   <ul>
-    <li><b>Antes (hasta 07:50):</b> los dos Sevilla-Madrid, 02061 y 02261, ya iban con unos 35 minutos de retraso. Entre las 07:45 y las 07:50, 02061 no se movió entre dos capturas. El problema parece anterior al choque.</li>
-    <li><b>Después (desde 08:00):</b> las posiciones dejan de cambiar y los retrasos quedan fijos durante horas. 02061, 02261 y 08081 quedan en (39.270, -3.883). 02080 y 08080 quedan en (39.549, -3.821).</li>
-    <li><b>Límites:</b> el feed no da velocidad ni identifica qué trenes chocaron. Una posición congelada puede ser un tren detenido por el corte de la línea o un dato que dejó de actualizarse. Estos datos no habrían bastado para predecir el accidente.</li>
+    <li>Entre las 07:00 y las 07:55 UTC el retraso medio en el corredor fue de <b>14,2 min</b>. La media de los 37 días anteriores en esa misma ventana es de 8,9 min. El 28 de octubre queda en el puesto 4 de 38 días. El día más alto, el 14 de octubre, llegó a 24,4 min.</li>
+    <li>En 22 de esos 37 días hubo en esa ventana algún tren con 30 min o más de retraso en el corredor.</li>
+    <li>Por tanto un retraso alto indica una incidencia en la línea, no un accidente. Si se usara como alarma, saltaría casi todas las semanas y casi nunca habría un choque.</li>
+    <li>Lo que sí se puede hacer con estos datos es detectar que una línea está perturbada y que unos trenes llevan horas parados.</li>
   </ul>
-  <p>Fuente de la hora y el lugar: <a href="https://cnnespanol.cnn.com/2026/10/28/espana/live-news/accidente-trenes-pasajeros-espana-vivo-trax">CNN en Español</a>. Datos: feed público de Renfe Larga Distancia.</p>
+
+  <h2>Límites</h2>
+  <ul>
+    <li>La recogida tiene huecos justo en la hora crítica (06:55 a 07:15, 07:15 a 07:45 y 08:00 a 08:15). No se puede fijar el instante del choque con los datos.</li>
+    <li>El feed no da velocidad, solo posición y retraso. Una posición que no cambia puede ser un tren parado o un dato que dejó de actualizarse.</li>
+    <li>No sé cuáles de estos trenes estuvieron implicados. La prensa no los ha identificado en las fuentes que he consultado.</li>
+    <li>Los 12 trenes de los gráficos son los que pasaron por la zona de Toledo entre las 06:00 y las 12:00 UTC.</li>
+  </ul>
 
 <script>
 fetch("data/accidente.json").then(r => r.json()).then(d => {
@@ -46,7 +83,7 @@ fetch("data/accidente.json").then(r => r.json()).then(d => {
   const marker = {
     id: "marker",
     afterDraw(c) {
-      const x = c.scales.x.getPixelForValue(d.accident);
+      const x = c.scales.x.getPixelForValue(c.data.labels.findIndex(k => k >= d.accident));
       if (isNaN(x)) return;
       const { top, bottom } = c.chartArea, g = c.ctx;
       g.save(); g.strokeStyle = "#ef4444"; g.setLineDash([5, 4]);
@@ -71,6 +108,19 @@ fetch("data/accidente.json").then(r => r.json()).then(d => {
   });
 
   const pts = (phase) => d.trains.flatMap(t => t.pts.filter(p => (p[0] <= d.accident) === phase).map(p => ({ x: p[2], y: p[1], t: p[0], id: t.id })));
+  const H = d.hourly, hl = H.hours.map(h => h + ":00");
+  const mk = (id, type, key, unit) => new Chart(document.getElementById(id), {
+    type,
+    data: { labels: hl, datasets: [
+      { label: "28 oct", data: H[key].n28, borderColor: "#ef4444", backgroundColor: "#ef4444", borderWidth: 2 },
+      { label: "día normal (media de " + H.days + " días)", data: H[key].normal, borderColor: "#7b8ba8", backgroundColor: "#7b8ba8", borderWidth: 2 },
+      { label: "29 oct", data: H[key].n29, borderColor: "#f59e0b", backgroundColor: "#f59e0b", borderWidth: 2 }
+    ] },
+    options: { maintainAspectRatio: false, scales: { x: { grid, ticks: tick }, y: { grid, ticks: tick, title: { display: true, text: unit, color: "#7b8ba8" } } }, plugins: { legend: { labels: { color: "#7b8ba8", boxWidth: 10 } } } }
+  });
+  mk("fleet", "line", "fleetDelay", "retraso medio (min)");
+  mk("corridor", "bar", "corridorTrains", "trenes por captura");
+
   new Chart(document.getElementById("map"), {
     type: "scatter",
     data: { datasets: [
