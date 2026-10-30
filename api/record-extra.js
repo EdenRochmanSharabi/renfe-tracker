@@ -2,6 +2,9 @@
 // there is no growing daily file and no read-modify-write race with record-gps / record-stats.
 // Per train: position, delay, station before/next, expected arrival, position timestamp, rolling
 // stock and product. Weather at a few points of the network every 15 minutes.
+// Official GTFS-RT long-distance feeds (best effort, never block the train data):
+//   v  every minute: per vehicle [vehicleId, status, stopId], status 0=STOPPED_AT 1=INCOMING_AT 2=IN_TRANSIT_TO
+//   u  every 5 minutes: SCHEDULED trips only (the rest are mostly CANCELED), [tripId, delay, stopId, arrivalTime] of the first stopTimeUpdate
 const REPO = "https://api.github.com/repos/EdenRochmanSharabi/renfe-tracker/contents/";
 const BRANCH = process.env.DATA_BRANCH || "data";
 const RENFE_URL = "https://tiempo-real.largorecorrido.renfe.com/renfe-visor/flotaLD.json";
@@ -13,6 +16,9 @@ const POINTS = [
   ["Barcelona", 41.38, 2.14], ["Valencia", 39.47, -0.38], ["Zaragoza", 41.66, -0.91],
   ["Valladolid", 41.65, -4.72], ["Alicante", 38.35, -0.49],
 ];
+const VEHICLES_URL = "https://gtfsrt.renfe.com/vehicle_positions_LD.json";
+const UPDATES_URL = "https://gtfsrt.renfe.com/trip_updates_LD.json";
+const STATUS = { STOPPED_AT: 0, INCOMING_AT: 1, IN_TRANSIT_TO: 2 };
 const WEATHER_VARS = ["temperature_2m", "precipitation", "wind_speed_10m", "wind_gusts_10m", "visibility", "weather_code"];
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -32,6 +38,33 @@ async function getWeather() {
   }
 }
 
+async function getVehicles() {
+  try {
+    const r = await fetch(VEHICLES_URL, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j.entity || []).map((e) => [
+      String(e.vehicle?.vehicle?.id ?? ""), STATUS[e.vehicle?.currentStatus] ?? null, String(e.vehicle?.stopId ?? ""),
+    ]);
+  } catch {
+    return null; // best effort; train data is still saved
+  }
+}
+
+async function getUpdates() {
+  try {
+    const r = await fetch(UPDATES_URL, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j.entity || []).filter((e) => e.tripUpdate?.trip?.scheduleRelationship === "SCHEDULED").map((e) => {
+      const u = e.tripUpdate, s = u.stopTimeUpdate?.[0];
+      return [String(u.trip.tripId ?? ""), u.delay ?? null, String(s?.stopId ?? ""), s?.arrival?.time ?? null];
+    });
+  } catch {
+    return null; // best effort; train data is still saved
+  }
+}
+
 export default async function handler(req, res) {
   const secret = req.headers["x-cron-secret"];
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
@@ -44,6 +77,8 @@ export default async function handler(req, res) {
     const now = new Date();
     const feed = () => fetch(RENFE_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
     const weatherP = now.getUTCMinutes() % 15 === 0 ? getWeather() : Promise.resolve(null);
+    const vehiclesP = getVehicles();
+    const updatesP = now.getUTCMinutes() % 5 === 0 ? getUpdates() : Promise.resolve(null);
     let resp;
     try { resp = await feed(); } catch { await sleep(1000); resp = await feed(); } // transient network error
     if (!resp.ok) return res.status(resp.status).json({ error: "upstream " + resp.status });
@@ -69,12 +104,15 @@ export default async function handler(req, res) {
     }
     if (!trains.length) return res.status(200).json({ ok: true, saved: 0 });
 
-    const weather = await weatherP;
+    const [weather, vehicles, updates] = await Promise.all([weatherP, vehiclesP, updatesP]);
     const dateStr = now.getUTCFullYear() + "-" + pad(now.getUTCMonth() + 1) + "-" + pad(now.getUTCDate());
     const timeStr = pad(now.getUTCHours()) + "-" + pad(now.getUTCMinutes());
     const filePath = "extra/" + dateStr + "/" + timeStr + ".json";
     const capture = { f: data.fechaActualizacion || "", np: (data.trenesNoPosicionados || []).length, tr: trains };
     if (weather) { capture.wp = POINTS; capture.wv = WEATHER_VARS; capture.w = weather; }
+
+    if (vehicles) capture.v = vehicles;
+    if (updates) capture.u = updates;
 
     const body = JSON.stringify({
       message: "extra " + dateStr + " " + timeStr,
