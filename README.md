@@ -14,3 +14,14 @@ Read directories with `git` (`git ls-tree`), not the Contents API: it lists at m
 
 `wp` = weather points `[name,lat,lon]`, `wv` = variable names, `w` = values per point in `wv` order.
 `f` = feed timestamp (Spanish local time), `np` = number of unpositioned trains.
+
+## Static reference data (`static/`, downloaded once on 2026-10-30)
+
+| File | Source | Content |
+|---|---|---|
+| `static/osm_ways_highspeed.json` | OpenStreetMap | 6644 ways `railway=rail highspeed=yes`: `id`, `maxspeed`, `electrified`, `railway:etcs`, `railway:lzb`, `railway:traffic_mode`, `usage`, `service`, `name`, `tunnel`, `bridge`, `geom` = `[[lat,lon],...]` (5 decimals). LZB tags are incomplete. |
+| `static/osm_level_crossings.json` | OpenStreetMap | 5047 nodes `railway=level_crossing`: `id`, `lat`, `lon`, `crossing*` tags (barrier info on only about a quarter of them). |
+| `static/renfe_estaciones.csv` | data.renfe.com | 646 stations with coordinates. `;` separated, UTF-8 with BOM, decimal comma. |
+| `static/renfe_trenes.csv` | data.renfe.com | Technical sheets of 38 train series (max speed, signalling). `;` separated, ISO-8859-1. |
+
+OpenStreetMap data: (c) OpenStreetMap contributors, licensed under the ODbL (https://www.openstreetmap.org/copyright). Renfe data: CC BY 4.0.
