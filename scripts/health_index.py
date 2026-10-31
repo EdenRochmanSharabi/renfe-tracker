@@ -50,7 +50,7 @@ def load_cercanias():
         except Exception:
             continue
         for v in j.get("v", []):
-            days.setdefault(f.split("/")[-2], {}).setdefault(f.split("/")[-1][:5], {})["C:" + v[0]] = (v[2] / 1e5, v[3] / 1e5, v[6] / 60)
+            days.setdefault(f.split("/")[-2], {}).setdefault(f.split("/")[-1][:5], {})["C:" + v[0]] = (v[2] / 1e5, v[3] / 1e5, None if v[6] is None else v[6] / 60)
     return days
 
 GRID = 0.005     # ~500 m, bigger than SNAP_M so the 3x3 neighbourhood is enough
