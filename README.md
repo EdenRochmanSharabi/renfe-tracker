@@ -8,11 +8,11 @@ Charts are generated from the `data` branch and follow the light and dark theme.
 
 ### Long-distance trains trace the high-speed corridors
 
-<sub>675,780 train positions, 5-minute samples, 2026-09-19 to 2026-10-31. Source: Renfe GPS feed; lines: OSM high-speed</sub>
+<sub>676,652 train positions, 5-minute samples, 2026-09-19 to 2026-10-31. Source: Renfe GPS feed; lines: OSM high-speed</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-dark.png?v=604a937d">
-  <img alt="Long-distance trains trace the high-speed corridors" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-light.png?v=604a937d" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-dark.png?v=25a7de6f">
+  <img alt="Long-distance trains trace the high-speed corridors" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-light.png?v=25a7de6f" width="100%">
 </picture>
 
 ### Weekdays peak at 177 trains in service at 18:00; weekends reach 162
@@ -26,29 +26,29 @@ Charts are generated from the `data` branch and follow the light and dark theme.
 
 ### Typical delay is 5 min, but the slowest tenth runs 64+ min late at 23:00
 
-<sub>Delay of positioned trains, GPS samples every 5 min (n=672,470), 05:00-23:59 Europe/Madrid. Source: renfe-tracker gps, 2026-09-19 to 2026-10-31</sub>
+<sub>Delay of positioned trains, GPS samples every 5 min (n=673,342), 05:00-23:59 Europe/Madrid. Source: renfe-tracker gps, 2026-09-19 to 2026-10-31</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-dark.png?v=51464fbe">
-  <img alt="Typical delay is 5 min, but the slowest tenth runs 64+ min late at 23:00" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-light.png?v=51464fbe" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-dark.png?v=943e8da9">
+  <img alt="Typical delay is 5 min, but the slowest tenth runs 64+ min late at 23:00" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-light.png?v=943e8da9" width="100%">
 </picture>
 
 ### Cercanias: 28% of positions are 5+ min late, led by Madrid and Barcelona
 
-<sub>22,083 vehicle positions from 83 captures, 2026-10-31, coloured by delay (min). Grey: OSM rail network</sub>
+<sub>24,570 vehicle positions from 92 captures, 2026-10-31, coloured by delay (min). Grey: OSM rail network</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-dark.png?v=1a890c6c">
-  <img alt="Cercanias: 28% of positions are 5+ min late, led by Madrid and Barcelona" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-light.png?v=1a890c6c" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-dark.png?v=00fefa29">
+  <img alt="Cercanias: 28% of positions are 5+ min late, led by Madrid and Barcelona" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-light.png?v=00fefa29" width="100%">
 </picture>
 
 ### Madrid Cercanias trains ran 6.9 min late on average, the most of 4 nuclei
 
-<sub>Mean delay of observed vehicles, 5-min captures, 83 captures, 2026-10-31. Source: Renfe GTFS-RT</sub>
+<sub>Mean delay of observed vehicles, 5-min captures, 92 captures, 2026-10-31. Source: Renfe GTFS-RT</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-dark.png?v=0e5b0e2a">
-  <img alt="Madrid Cercanias trains ran 6.9 min late on average, the most of 4 nuclei" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-light.png?v=0e5b0e2a" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-dark.png?v=4bfa85bb">
+  <img alt="Madrid Cercanias trains ran 6.9 min late on average, the most of 4 nuclei" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-light.png?v=4bfa85bb" width="100%">
 </picture>
 
 ### 28 Oct 2026: long-distance traffic around Urda, 06:00 to 10:00 UTC
@@ -115,13 +115,24 @@ Charts are generated from the `data` branch and follow the light and dark theme.
 
 <sub>Road: persons killed within 30 days of an injury accident, all road users (Eurostat tran_sf_roadus, DG MOVE CARE; Spain's own 24-hour count is lower). Rail: persons killed in significant accidents on the rail network (tran_sf_railvi), suicides excluded, including level-crossing users, trespassers and staff. Denominator: rail passenger-km (rail_pa_total); road = cars and buses, derived as rail passenger-km x (car + bus share) / rail share (tran_hv_psmod, rounded to 0.1 point). Motorcycles, bicycles and walking are not in the denominator, though their deaths are in the road numerator (overstates road risk). Rail deaths include trespassers and level-crossing users, not only passengers (overstates rail risk). Indicative only.</sub>
 
+### Spain 2026 to 30 Sep: 816 road deaths (DGT, 24 h, interurban) and 114 in the two big rail accidents
+
+<sub>Road: DGT provisional deaths 1 Jan to 30 Sep, 816 against 866 in 2025 (published 2 Oct 2026). Rail: Adamuz 46 and Urda 68, press figures to 28 Oct. Separate y scales.</sub>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/2026-rail-vs-road-dark.png?v=450d9101">
+  <img alt="Spain 2026 to 30 Sep: 816 road deaths (DGT, 24 h, interurban) and 114 in the two big rail accidents" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/2026-rail-vs-road-light.png?v=450d9101" width="100%">
+</picture>
+
+<sub>Road counts deaths within 24 h on interurban roads only (DGT, provisional); Eurostat's 30-day all-roads figures are higher, so the two are not comparable. 2025 is derived from the DGT's stated difference. Rail bars are press figures for two accidents (Urda still provisional, earlier reports said 64); they exclude other 2026 rail deaths not yet published (level crossings, people hit by trains). Road and rail counts are not like for like, and the road period ends 30 Sep.</sub>
+
 ### Urda 2026 is the second deadliest rail accident in the seed list, after Angrois 2013
 
 <sub>Spain, 33 listed accidents since 2007 (Wikidata + Wikipedia seed, incomplete); hollow dots = 0 deaths</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety2-seed-timeline-dark.png?v=a07bd9ac">
-  <img alt="Urda 2026 is the second deadliest rail accident in the seed list, after Angrois 2013" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety2-seed-timeline-light.png?v=a07bd9ac" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety2-seed-timeline-dark.png?v=905aafee">
+  <img alt="Urda 2026 is the second deadliest rail accident in the seed list, after Angrois 2013" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety2-seed-timeline-light.png?v=905aafee" width="100%">
 </picture>
 
-<sub>Casualty figures are UNVERIFIED and differ between sources; Urda (28 Oct 2026) is reported as 69-74 deaths, 74 plotted. The list is biased to media-covered events and is not a census (Eurostat counts ~50-100 significant accidents per year).</sub>
+<sub>Casualty figures are UNVERIFIED and differ between sources; Urda (28 Oct 2026) is plotted as 74 (seed value); press counts differ and were provisional (68 on 28 Oct per the regional government). The list is biased to media-covered events and is not a census (Eurostat counts ~50-100 significant accidents per year).</sub>
