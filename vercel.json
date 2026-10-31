@@ -3,13 +3,19 @@
   "rewrites": [
     { "source": "/api/fleet", "destination": "/api/fleet" },
     { "source": "/api/routes", "destination": "/api/routes" },
-    { "source": "/api/rail-geometry", "destination": "/api/rail-geometry" },
+    { "source": "/api/rail-geometry", "destination": "/data/rail-network.json" },
     { "source": "/api/history", "destination": "/api/history" },
     { "source": "/api/record-gps", "destination": "/api/record-gps" },
     { "source": "/api/record-stats", "destination": "/api/record-stats" },
     { "source": "/api/analytics", "destination": "/api/analytics" }
   ],
   "headers": [
+    {
+      "source": "/api/rail-geometry",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800" }
+      ]
+    },
     {
       "source": "/api/(.*)",
       "headers": [
