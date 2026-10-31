@@ -28,7 +28,11 @@ Read directories with `git` (`git ls-tree`), not the Contents API: it lists at m
 | `static/osm_level_crossings.json` | OpenStreetMap | 5047 nodes `railway=level_crossing`: `id`, `lat`, `lon`, `crossing*` tags (barrier info on only about a quarter of them). |
 | `static/renfe_estaciones.csv` | data.renfe.com | 646 stations with coordinates. `;` separated, UTF-8 with BOM, decimal comma. |
 | `static/renfe_trenes.csv` | data.renfe.com | Technical sheets of 38 train series (max speed, signalling). `;` separated, ISO-8859-1. |
+| `static/rinf_tracks.json` | ERA RINF (SPARQL, 2026-10-31) | 3530 Adif tracks: `track, section, track_id, line, im, len_km, vmax (km/h, 2413 tracks), etcs, elec, supply, detect, min_radius_m (null when RINF gave 0), level_crossings, gauge_mm, line_cat, op_start, op_end, geom`. `geom` is a straight 2-point line between the section ends, NOT the real alignment. Only Adif (manager 0071); no FGC, Euskotren or metros. Operator-declared snapshot, not actual track state. |
+| `static/rinf_points.json` | ERA RINF | 2349 operational points: name, type, lat, lon (4 decimals). |
+| `static/eurostat_es.json` | Eurostat | Spain: `tran_sf_railac` (accidents by type), `tran_sf_railvi` (victims), `rail_tf_trainmv` (thousand train-km). Years 2006-2024 for safety, 2004-2025 for train-km. Header has units and retrieval date. |
+| `static/accidents_seed.json`, `.md` | Wikidata + Wikipedia | 34 Spanish rail accidents since 2007 with date, place, coordinates when known. INCOMPLETE and biased to media-covered events; casualty figures differ between sources and are unverified. Use as seed labels only, not as a census. |
 
-OpenStreetMap data: (c) OpenStreetMap contributors, licensed under the ODbL (https://www.openstreetmap.org/copyright). Renfe data: CC BY 4.0.
+OpenStreetMap data: (c) OpenStreetMap contributors, licensed under the ODbL (https://www.openstreetmap.org/copyright). Renfe data: CC BY 4.0. Eurostat: reuse with source attribution (CC BY 4.0). Wikidata CC0; Wikipedia text CC BY-SA 4.0 (facts only). ERA RINF: ERA terms of use.
 
 Attribution: Renfe open data CC BY 4.0; Metro Bilbao (CTB) CC BY 4.0; FGC CC BY 4.0; Euskotren under the NAP licence (Powered by MITRAMS); Open-Meteo CC BY 4.0; AEMET reuse with attribution; IGN CC BY 4.0; NOAA SWPC public domain; Copernicus EMS.
