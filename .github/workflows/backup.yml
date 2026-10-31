@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  issues: write
 jobs:
   bundle:
     runs-on: ubuntu-latest
@@ -18,3 +19,7 @@ jobs:
           git bundle create data.bundle data 2>/dev/null || git bundle create data.bundle HEAD
           gh release create "$TAG" data.bundle --repo "${{ github.repository }}" --title "data backup $TAG" --notes "git bundle of the data branch. Restore: git clone data.bundle -b data"
           gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '.[].tagName | select(startswith("backup-"))' | tail -n +5 | xargs -r -I{} gh release delete {} --repo "${{ github.repository }}" --yes --cleanup-tag
+      - name: Open an issue when the backup fails
+        if: failure()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh issue create --repo "${{ github.repository }}" --title "data backup failed $(date -u +%F)" --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
