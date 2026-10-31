@@ -1,0 +1,53 @@
+name: update-charts
+on:
+  schedule:
+    - cron: "15 7 * * *"   # 07:15 UTC, after the 06:30 data validation
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+concurrency: update-charts
+jobs:
+  charts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BOT_NAME: github-actions[bot]
+      BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: main }
+      - name: Sparse checkout of the data branch (only what the charts read, no history)
+        run: |
+          git clone -q --depth 1 --branch data --filter=blob:none --sparse "https://github.com/${{ github.repository }}.git" data
+          git -C data sparse-checkout set --no-cone \
+            "/static/osm_ways_highspeed.json" "/static/rinf_tracks.json" "/static/eurostat_es.json" "/static/accidents_seed.json" \
+            "/gps/*.json" "/gps-night/*.json" "/stats/*.json" "/cercanias/"
+          du -sh data --exclude=.git
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r main/scripts/charts/requirements.txt
+      - name: Build the charts
+        run: python3 main/scripts/charts/build.py data "$RUNNER_TEMP/charts"
+      - name: Publish the PNGs to the orphan branch gallery (one fresh commit, force-pushed)
+        run: |
+          mkdir "$RUNNER_TEMP/gallery" && cd "$RUNNER_TEMP/gallery"
+          git init -q -b gallery && mkdir img && cp "$RUNNER_TEMP"/charts/*.png img/
+          git config user.name "$BOT_NAME" && git config user.email "$BOT_EMAIL"
+          git add img && git commit -q -m "gallery: charts $(date -u +%F)"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gallery:gallery
+      - name: Refresh the Gallery text in README.md (only if it changed)
+        run: |
+          cd main
+          python3 scripts/charts/readme.py "$RUNNER_TEMP/charts/texts.json" README.md
+          if git diff --quiet README.md; then echo "README unchanged"; exit 0; fi
+          git config user.name "$BOT_NAME" && git config user.email "$BOT_EMAIL"
+          git add README.md && git commit -q -m 'gallery: refresh chart text'
+          git pull -q --rebase origin main && git push -q origin HEAD:main
+      - name: Open an issue when the update fails
+        if: failure()
+        run: |
+          DAY=$(date -u +%F)
+          gh issue create --repo "${{ github.repository }}" --title "chart update failed $DAY" \
+            --body "The daily chart update failed. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
