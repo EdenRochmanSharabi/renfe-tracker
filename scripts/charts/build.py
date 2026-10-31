@@ -1,4 +1,4 @@
-"""Build the 10 gallery charts. Usage: python3 scripts/charts/build.py DATA_DIR OUT_DIR
+"""Build the gallery charts. Usage: python3 scripts/charts/build.py DATA_DIR OUT_DIR
 DATA_DIR = checkout of the data branch (static/ gps/ gps-night/ stats/ cercanias/); OUT_DIR gets <name>-light.png, <name>-dark.png, texts.json.
 A chart that cannot be built is skipped with a warning; the exit code is 1 only if no chart at all was built."""
 import json, sys, traceback

@@ -47,6 +47,43 @@ def safety1b(D):
     if y1 < 2026: foot += f" Series ends {y1}: Adamuz and Urda (2026) are not in it."
     return line_chart(E, [("killed", rk), ("seriously injured", E["ri"])],
         f"Rail deaths per million train-km: {rk[y1]:.2f} in {y1} ({E['kil'][y1]} killed, {E['inj'][y1]} seriously injured)", foot, sorted({pk, y1}))
+@cache
+def road(D):
+    R = json.loads(need(D, "static", "eurostat_road_es.json").read_text())["rows"]
+    g = lambda ds, **k: {r["year"]: r["value"] for r in R if r["dataset"] == ds and all(r.get(a) == b for a, b in k.items())}
+    rk, rail_pkm, sh = g("tran_sf_roadus", unit="NR"), g("rail_pa_total", unit="MIO_PKM"), {v: g("tran_hv_psmod", vehicle=v) for v in ("TRN", "CAR", "BUS_TOT")}
+    rail = euro(D)["kil"]; yrs = sorted(y for y in rk if y in rail)
+    rp = {y: rail_pkm[y] * (sh["CAR"][y] + sh["BUS_TOT"][y]) / sh["TRN"][y] for y in yrs if y in rail_pkm and all(y in s for s in sh.values())}  # car+bus pkm = rail pkm x (car+bus share)/rail share
+    return dict(yrs=yrs, road=rk, rail=rail, ryrs=sorted(rp), rrisk={y: rail[y] / (rail_pkm[y] / 1e3) for y in rp}, drisk={y: rk[y] / (rp[y] / 1e3) for y in rp})
+ROADNOTE = ("Road: persons killed within 30 days of an injury accident, all road users (Eurostat tran_sf_roadus, DG MOVE CARE; Spain's own 24-hour count is lower). "
+            "Rail: persons killed in significant accidents on the rail network (tran_sf_railvi), suicides excluded, including level-crossing users, trespassers and staff.")
+def railroad1(D):
+    C = style.C; E = road(D); yrs = E["yrs"]; y0, y1 = yrs[0], yrs[-1]; fig, axs = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
+    for ax, k, lab, col in ((axs[0], "road", "Road", C["series"][0]), (axs[1], "rail", "Rail", C["series"][1])):
+        d = E[k]; ax.plot(yrs, [d[y] for y in yrs], marker="o", ms=4, color=col); ax.set_ylim(0, max(d[y] for y in yrs) * 1.25); ax.set_ylabel("killed")
+        ax.text(0.99, 0.93, f"{lab} (y axis 0 to {ax.get_ylim()[1]:.0f})", transform=ax.transAxes, va="top", ha="right", fontsize=10.5, fontweight="bold", color=C["ink"])
+        for y in sorted({y0, y1, max(yrs, key=d.get)}):
+            ax.annotate(f"{d[y]}", (y, d[y]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=9, color=C["ink2"])
+    axs[1].set_xticks(yrs[::2]); axs[1].set_xlim(y0 - .5, y1 + .5)
+    ratio = lambda y: E["road"][y] / E["rail"][y] if E["rail"][y] else float("nan")
+    frame(fig, f"Spain: {E['road'][y1]} people died on the roads in {y1}, {E['rail'][y1]} in rail accidents",
+        f"People killed per year, {y0}-{y1}: road {E['road'][y0]} to {E['road'][y1]}, rail {E['rail'][y0]} to {E['rail'][y1]}; road/rail ratio {ratio(y1):.0f}x in {y1} ({ratio(y0):.0f}x in {y0}). Separate y scales.",
+        ROADNOTE + "\nThe two panels have different y axes (rail is far smaller); compare the shape over time, not the heights. Definitions differ: counts are not like for like.")
+    fig.subplots_adjust(top=0.83, bottom=0.14, hspace=0.12); return fig
+def railroad2(D):
+    C = style.C; E = road(D); yrs = E["ryrs"]
+    if len(yrs) < 3: raise ValueError("no passenger-km exposure data")
+    y0, y1 = yrs[0], yrs[-1]; fig, ax = plt.subplots(figsize=(10, 5.5))
+    for i, (lab, k) in enumerate((("road (cars and buses)", "drisk"), ("rail", "rrisk"))):
+        d = E[k]; ax.plot(yrs, [d[y] for y in yrs], marker="o", ms=4, color=C["series"][i], label=lab)
+        for y in (y0, y1): ax.annotate(f"{d[y]:.3g}", (y, d[y]), textcoords="offset points", xytext=(8, -3) if y == y1 else (-8, -3), ha="left" if y == y1 else "right", fontsize=9, color=C["ink2"])
+    ax.set_yscale("log"); ax.set_ylabel("killed per billion passenger-km (log scale)"); ax.legend(loc="upper right"); ax.set_xticks(yrs[::2]); ax.set_xlim(y0 - 1.6, y1 + 1.6)
+    d, r = E["drisk"], E["rrisk"]; hi, lo = ("rail", "road") if r[y1] > d[y1] else ("road", "rail")
+    frame(fig, f"Per passenger-km, rail was {r[y1] / d[y1]:.1f} times the road death rate in {y1}" if r[y1] > d[y1] else f"Per passenger-km, road was {d[y1] / r[y1]:.1f} times the rail death rate in {y1}",
+        f"Spain {y0}-{y1}: road {d[y0]:.1f} to {d[y1]:.1f}, rail {r[y0]:.2f} to {r[y1]:.2f} killed per billion passenger-km (log scale); rail peaks in 2013 (Angrois)",
+        ROADNOTE + "\nDenominator: rail passenger-km (rail_pa_total); road = cars and buses, derived as rail passenger-km x (car + bus share) / rail share (tran_hv_psmod, rounded to 0.1 point). Motorcycles, bicycles and walking are not in the denominator, though their deaths are in the road numerator (overstates road risk). "
+        "Rail deaths include trespassers and level-crossing users, not only passengers (overstates rail risk). Indicative only.")
+    return fig
 def safety2(D):
     C = style.C; seed = json.loads(need(D, "static", "accidents_seed.json").read_text())["accidents"]
     seed = [a for a in seed if a["deaths"] is not None]
@@ -116,4 +153,4 @@ def safety3(D):
         "One labelled event, no validated predictive claim: the index is a descriptive anomaly score, not tested as a warning.\n"
         f"{nomiss}hours {run[0][0]}-{run[-1][0]} are after the collision.\n"
         "Baseline lines are drawn straight across hours without baseline. Cell = the highest-scoring cell of the Urda zone; the exact collision coordinates are not in the dataset."); return fig
-CHARTS = [("safety1-accidents", safety1, 320), ("safety1b-victims", safety1b, 320), ("safety2-seed-timeline", safety2, 320), ("safety3-health-urda", safety3, 320)]
+CHARTS = [("safety1-accidents", safety1, 320), ("safety1b-victims", safety1b, 320), ("rail-vs-road-deaths", railroad1, 320), ("rail-vs-road-risk", railroad2, 320), ("safety2-seed-timeline", safety2, 320), ("safety3-health-urda", safety3, 320)]

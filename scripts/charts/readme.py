@@ -3,7 +3,7 @@ Everything above `## Gallery` is kept; the section runs to the next `## ` headin
 import hashlib, html, json, re, sys
 BASE = "https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img"
 ORDER = ["map1-density", "daily-rhythm", "delay-by-hour", "map2-cercanias", "cercanias-by-nucleus", "map3-urda",
-         "safety3-health-urda", "safety1-accidents", "safety1b-victims", "safety2-seed-timeline"]
+         "safety3-health-urda", "safety1-accidents", "safety1b-victims", "rail-vs-road-deaths", "rail-vs-road-risk", "safety2-seed-timeline"]
 INTRO = "Charts are generated from the `data` branch and follow the light and dark theme."
 def gallery(texts):
     out = ["## Gallery", "", INTRO, ""]
