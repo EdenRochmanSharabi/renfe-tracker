@@ -1,0 +1,71 @@
+{
+ "header": {
+  "retrieved": "2026-10-31",
+  "sources": "DGT press release 'Balance siniestralidad septiembre 2026' (Ministerio del Interior), 2 Oct 2026; press reports for rail (see rows).",
+  "definitions": "Road: DGT provisional count of people killed within 24 h of the crash, interurban roads only (DGT standard method; the release text itself does not restate it). Rail: deaths in the named accidents as reported; excludes level crossings, people hit by trains and any other 2026 rail deaths not yet published.",
+  "as_of_note": "Road runs to 30 Sep 2026 (latest official monthly release); rail to 28 Oct 2026. Periods differ.",
+  "comparability": "Not like for like: Eurostat 30-day all-roads figures are higher than DGT 24 h interurban counts, and rail here is two accidents, not a census.",
+  "licence": "DGT notes de prensa are public administration material (reuse with attribution); press figures are cited, not copied. Not verified against a formal licence text.",
+  "caveats": "No 2019 DGT figure found. Urda toll provisional. Official Adif/CIAF/Interior rail 2026 statistics not found."
+ },
+ "rows": [
+  {
+   "mode": "road",
+   "measure": "deaths_ytd_dgt_24h_interurban",
+   "period": "2026-01-01/2026-09-30",
+   "value": 816,
+   "source_url": "https://www.dgt.es/export/sites/web-DGT/.galleries/downloads/nota_prensa/2026/20260210-NP-Balance-DGT-siniestralidad-septiembre-2026.pdf",
+   "status": "official",
+   "as_of": "2026-10-02"
+  },
+  {
+   "mode": "road",
+   "measure": "deaths_ytd_dgt_24h_interurban",
+   "period": "2025-01-01/2025-09-30",
+   "value": 866,
+   "source_url": "https://www.dgt.es/export/sites/web-DGT/.galleries/downloads/nota_prensa/2026/20260210-NP-Balance-DGT-siniestralidad-septiembre-2026.pdf",
+   "status": "official",
+   "as_of": "2026-10-02",
+   "note": "derived: DGT states 2026 is 50 fewer than the same period of 2025; 816+50"
+  },
+  {
+   "mode": "road",
+   "measure": "deaths_month_dgt_24h_interurban",
+   "period": "2026-09",
+   "value": 87,
+   "source_url": "https://www.dgt.es/export/sites/web-DGT/.galleries/downloads/nota_prensa/2026/20260210-NP-Balance-DGT-siniestralidad-septiembre-2026.pdf",
+   "status": "official",
+   "as_of": "2026-10-02"
+  },
+  {
+   "mode": "road",
+   "measure": "deaths_ytd_dgt_via_press",
+   "period": "2026-01-01/2026-10-04",
+   "value": 882,
+   "source_url": "https://www.motor16.com/las-ultimas-noticias/siniestralidad-vial-2026-dgt/",
+   "status": "press",
+   "as_of": "2026-10-19",
+   "note": "Motor16 attributing to DGT; not used in the chart; DGT release itself not found"
+  },
+  {
+   "mode": "rail",
+   "measure": "deaths_accident",
+   "period": "2026-01-18 Adamuz",
+   "value": 46,
+   "source_url": "https://www.diariodeleon.es/nacional/260429/2083272/ciaf-remarca-hipotesis-rotura-carril-adamuz.html",
+   "status": "press",
+   "as_of": "2026-04-29",
+   "note": "46 dead, 120+ injured, in agency copy about the CIAF report; early counts were 39-43. Official CIAF/Transportes final count not retrieved"
+  },
+  {
+   "mode": "rail",
+   "measure": "deaths_accident",
+   "period": "2026-10-28 Urda",
+   "value": 68,
+   "source_url": "https://www.diaridetarragona.com/sucesos/274306/cronologia-tragedia-ferroviaria-toledo-fallo-seguridad-68-muertos.html",
+   "status": "press",
+   "as_of": "2026-10-28",
+   "note": "68 per Castilla-La Mancha government (EFE/Articulo14); earlier 30, 64; still provisional; the 69-74 range was NOT found"
+  }
+ ]
+}
