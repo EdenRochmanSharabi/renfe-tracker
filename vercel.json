@@ -5,8 +5,14 @@
     { "source": "/api/routes", "destination": "/api/routes" },
     { "source": "/api/rail-geometry", "destination": "/data/rail-network.json" },
     { "source": "/api/history", "destination": "/api/history" },
-    { "source": "/api/record-gps", "destination": "/api/record-gps" },
-    { "source": "/api/record-stats", "destination": "/api/record-stats" },
+    { "source": "/api/record-gps", "destination": "/api/record?src=gps" },
+    { "source": "/api/record-stats", "destination": "/api/record?src=stats" },
+    { "source": "/api/record-extra", "destination": "/api/record?src=extra" },
+    { "source": "/api/record-schedule", "destination": "/api/record?src=schedule" },
+    { "source": "/api/record-context", "destination": "/api/record?src=context" },
+    { "source": "/api/record-cercanias", "destination": "/api/record?src=cercanias" },
+    { "source": "/api/record-regional", "destination": "/api/record?src=regional" },
+    { "source": "/api/record-env", "destination": "/api/record?src=env" },
     { "source": "/api/analytics", "destination": "/api/analytics" }
   ],
   "headers": [
