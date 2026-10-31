@@ -103,7 +103,7 @@ def safety2(D):
             ax.annotate(f"{short(a)} {d.year}: {a['deaths']}", (d, a["deaths"]), textcoords="offset points", xytext=(-8 if d.year > 2020 else 8, 4), ha="right" if d.year > 2020 else "left", fontsize=9.5, color=C["ink"], fontweight="bold" if u else "normal")
     ax.set_ylim(0, 90); ax.set_ylabel("deaths (as listed)"); ax.set_xlim(dt.date(min(dates).year, 1, 1), max(dt.date(2027, 3, 1), max(dates) + dt.timedelta(days=120)))
     frame(fig, title, f"Spain, {len(seed)} listed accidents since {min(dates).year} (Wikidata + Wikipedia seed, incomplete); hollow dots = 0 deaths",
-        f"Casualty figures are UNVERIFIED and differ between sources; Urda ({dt.date.fromisoformat(urda['date']):%-d %b %Y}) is reported as 69-74 deaths, {urda['deaths']} plotted.\n"
+        f"Casualty figures are UNVERIFIED and differ between sources; Urda ({dt.date.fromisoformat(urda['date']):%-d %b %Y}) is plotted as {urda['deaths']} (seed value); press counts differ and were provisional (68 on 28 Oct per the regional government).\n"
         "The list is biased to media-covered events and is not a census (Eurostat counts ~50-100 significant accidents per year)."); return fig
 @cache
 def health(D):
@@ -154,3 +154,24 @@ def safety3(D):
         f"{nomiss}hours {run[0][0]}-{run[-1][0]} are after the collision.\n"
         "Baseline lines are drawn straight across hours without baseline. Cell = the highest-scoring cell of the Urda zone; the exact collision coordinates are not in the dataset."); return fig
 CHARTS = [("safety1-accidents", safety1, 320), ("safety1b-victims", safety1b, 320), ("rail-vs-road-deaths", railroad1, 320), ("rail-vs-road-risk", railroad2, 320), ("safety2-seed-timeline", safety2, 320), ("safety3-health-urda", safety3, 320)]
+def rail_vs_road_2026(D):
+    C = style.C; J = json.loads(need(D, "static", "spain_deaths_2026.json").read_text()); R = J["rows"]
+    pick = lambda mode, meas, pre: next(r for r in R if r["mode"] == mode and r["measure"] == meas and r["period"].startswith(pre))
+    r26, r25 = pick("road", "deaths_ytd_dgt_24h_interurban", "2026"), pick("road", "deaths_ytd_dgt_24h_interurban", "2025")
+    ad, ur = pick("rail", "deaths_accident", "2026-01-18"), pick("rail", "deaths_accident", "2026-10-28")
+    d = lambda r: dt.date.fromisoformat(r["period"].split("/")[-1][:10])
+    end = f"{d(r26):%-d %b}"; rail_end = f"{d({'period': ur['period']}):%-d %b}"; tot = ad["value"] + ur["value"]
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5.5), gridspec_kw={"width_ratios": [3, 2]})
+    for ax, bars, ymax, lab in ((axs[0], [("2025\nsame period", r25["value"], C["muted"]), ("2026", r26["value"], C["series"][0])], r25["value"], "Road"),
+                                (axs[1], [("Adamuz\n18 Jan", ad["value"], C["series"][1]), ("Urda\n28 Oct", ur["value"], C["series"][1])], ur["value"], "Rail")):
+        ax.bar(range(2), [b[1] for b in bars], color=[b[2] for b in bars], width=.6); ax.set_xticks(range(2), [b[0] for b in bars]); ax.set_ylim(0, ymax * 1.22)
+        for i, b in enumerate(bars): ax.annotate(str(b[1]), (i, b[1]), textcoords="offset points", xytext=(0, 4), ha="center", fontsize=10, color=C["ink"])
+        ax.text(0.99, 0.97, f"{lab} (y axis 0 to {ax.get_ylim()[1]:.0f})", transform=ax.transAxes, va="top", ha="right", fontsize=10.5, fontweight="bold", color=C["ink"])
+        ax.grid(axis="x", visible=False)
+    axs[0].set_ylabel("deaths"); axs[1].text(0.03, 0.86, f"press figures\ntotal {tot}", transform=axs[1].transAxes, ha="left", fontsize=9, color=C["ink2"])
+    frame(fig, f"Spain 2026 to {end}: {r26['value']} road deaths (DGT, 24 h, interurban) and {tot} in the two big rail accidents",
+        f"Road: DGT provisional deaths 1 Jan to {end}, {r26['value']} against {r25['value']} in 2025 (published {d({'period': r26['as_of']}):%-d %b %Y}). Rail: Adamuz {ad['value']} and Urda {ur['value']}, press figures to {rail_end}. Separate y scales.",
+        "Road counts deaths within 24 h on interurban roads only (DGT, provisional); Eurostat's 30-day all-roads figures are higher, so the two are not comparable. 2025 is derived from the DGT's stated difference.\n"
+        f"Rail bars are press figures for two accidents (Urda still provisional, earlier reports said 64); they exclude other 2026 rail deaths not yet published (level crossings, people hit by trains). Road and rail counts are not like for like, and the road period ends {end}.")
+    fig.subplots_adjust(top=0.83, bottom=0.2, wspace=.15); return fig
+CHARTS.append(("2026-rail-vs-road", rail_vs_road_2026, 320))

@@ -22,7 +22,7 @@ jobs:
         run: |
           git clone -q --depth 1 --branch data --filter=blob:none --sparse "https://github.com/${{ github.repository }}.git" data
           git -C data sparse-checkout set --no-cone \
-            "/static/osm_ways_highspeed.json" "/static/rinf_tracks.json" "/static/eurostat_es.json" "/static/eurostat_road_es.json" "/static/accidents_seed.json" \
+            "/static/osm_ways_highspeed.json" "/static/rinf_tracks.json" "/static/eurostat_es.json" "/static/eurostat_road_es.json" "/static/spain_deaths_2026.json" "/static/accidents_seed.json" \
             "/gps/*.json" "/gps-night/*.json" "/stats/*.json" "/cercanias/"
           du -sh data --exclude=.git
       - uses: actions/setup-python@v5
