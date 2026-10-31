@@ -1,0 +1,20 @@
+name: backup-data
+on:
+  schedule:
+    - cron: "0 4 * * 0"   # Sundays 04:00 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: data, fetch-depth: 0 }
+      - name: Bundle the data branch into a release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          TAG="backup-$(date -u +%F)"
+          git bundle create data.bundle data 2>/dev/null || git bundle create data.bundle HEAD
+          gh release create "$TAG" data.bundle --repo "${{ github.repository }}" --title "data backup $TAG" --notes "git bundle of the data branch. Restore: git clone data.bundle -b data"
+          gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '.[].tagName | select(startswith("backup-"))' | tail -n +5 | xargs -r -I{} gh release delete {} --repo "${{ github.repository }}" --yes --cleanup-tag
