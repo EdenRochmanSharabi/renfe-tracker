@@ -22,4 +22,5 @@ jobs:
       - name: Open an issue when the backup fails
         if: failure()
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh issue create --repo "${{ github.repository }}" --title "data backup failed $(date -u +%F)" --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          gh issue create --repo "${{ github.repository }}" --title "data backup failed $(date -u +%F)" --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

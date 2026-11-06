@@ -14,3 +14,4 @@ jobs:
       - run: for f in api/*.js lib/*.js; do node --check "$f"; done
       - run: python3 -m py_compile scripts/*.py
       - run: node scripts/test-dispatcher.mjs
+      - run: for f in .github/workflows/*.yml; do ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f"; done
