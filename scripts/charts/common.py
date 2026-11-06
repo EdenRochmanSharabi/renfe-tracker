@@ -39,7 +39,8 @@ def cercanias(D):
     cap, lat, lon, dl = [], [], [], []
     for i, f in enumerate(files):
         for v in json.loads(f.read_text())["v"]:
-            if v[6] is not None: cap.append(i); lat.append(v[2] / 1e5); lon.append(v[3] / 1e5); dl.append(v[6])
+            # the feed wraps the delay mod 86400 around midnight (+88980 then -83820 for the same train): undo it
+            if v[6] is not None: cap.append(i); lat.append(v[2] / 1e5); lon.append(v[3] / 1e5); dl.append((v[6] + 43200) % 86400 - 43200)
     return dict(cap=np.array(cap), lat=np.array(lat), lon=np.array(lon), delay=np.array(dl, float), ncap=len(files), days=sorted({f.parent.name for f in files}))
 # Cercanias nuclei as lat/lon boxes (lat0, lat1, lon0, lon1); a position outside all of them is left out of the nucleus charts
 NUCLEI = {"Madrid": (40.0, 41.0, -4.6, -3.0), "Rodalies Catalunya": (40.9, 42.6, .4, 3.4),
