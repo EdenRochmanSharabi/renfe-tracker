@@ -9,7 +9,7 @@ PER_CAPTURE = {
     "regional":  ("2026-10-31", 288, 250, ["mb", "fgc"], 30),
     "env":       ("2026-10-31", 96, 85, ["aemet", "kp", "ign", "ems"], 45),
 }
-HOURLY = {"schedule": ["tr"], "weather": ["g", "w"], "alerts": ["a"]}
+HOURLY = {"schedule": (["tr"], 20), "weather": (["g", "w"], 24), "alerts": (["a"], 24)}  # dir -> (required keys, files per day; schedule saves nothing 00-03)
 NIGHT = 300  # minutes: no trains run roughly 00:00-05:00 UTC, so recorders save nothing; that time is neither a gap nor expected
 SCALE = 1 - NIGHT / 1440
 DAILY = {"gps": ["p"], "stats": ["snapshots"]}  # gps-night is optional (only when few trains run)
@@ -35,13 +35,14 @@ def check(root, day):
         if len(names) < minimum * SCALE:
             problems.append(f"{d}/{day}: {len(names)} captures, expected about {expect} (minimum {int(minimum * SCALE)})")
         mins = [int(n[:2]) * 60 + int(n[3:5]) for n in names]
+        if mins: mins = [0, *mins, 1440]  # the day edges count too: a first capture well after 05:00 is a gap
         worst = max((b - a - max(0, min(b, NIGHT) - a) for a, b in zip(mins, mins[1:])), default=0)
         if worst > gap: problems.append(f"{d}/{day}: gap of {worst} min (limit {gap})")
         for n in names: load(f"{p}/{n}", keys, problems)
-    for d, keys in HOURLY.items():
+    for d, (keys, expect) in HOURLY.items():
         p = f"{root}/{d}/{day}"
         names = [n for n in os.listdir(p) if len(n) == 7] if os.path.isdir(p) else []  # HH.json
-        if len(names) < 17: problems.append(f"{d}/{day}: {len(names)} hourly files, expected 24 (minimum 17)")
+        if len(names) < expect - 2: problems.append(f"{d}/{day}: {len(names)} hourly files, expected {expect} (minimum {expect - 2})")
         for n in names: load(f"{p}/{n}", keys, problems)
     for d, keys in DAILY.items():
         p = f"{root}/{d}/{day}.json"
