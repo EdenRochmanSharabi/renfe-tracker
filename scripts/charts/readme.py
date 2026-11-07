@@ -5,9 +5,10 @@ BASE = "https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/galle
 ORDER = ["map1-density", "daily-rhythm", "delay-by-hour", "map2-cercanias", "cercanias-by-nucleus", "map3-urda",
          "safety3-health-urda", "safety1-accidents", "safety1b-victims", "rail-vs-road-deaths", "rail-vs-road-risk", "2026-rail-vs-road", "safety2-seed-timeline"]
 INTRO = "Charts are generated from the `data` branch and follow the light and dark theme."
+def order(texts): return [n for n in ORDER if n in texts] + sorted(set(texts) - set(ORDER))
 def gallery(texts):
     out = ["## Gallery", "", INTRO, ""]
-    for name in [n for n in ORDER if n in texts] + sorted(set(texts) - set(ORDER)):
+    for name in order(texts):
         t = texts[name]; v = hashlib.md5(json.dumps(t, sort_keys=True).encode()).hexdigest()[:8]  # changes with the text, which carries the data counts: busts the image cache
         out += [f"### {t['title']}", "", f"<sub>{t['sub']}</sub>", "", "<picture>",
                 f'  <source media="(prefers-color-scheme: dark)" srcset="{BASE}/{name}-dark.png?v={v}">',

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datos registrados - AVE en directo</title>
+  <meta name="description" content="Resumen diario de los datos que este tracker guarda: estado de la recogida, retrasos de larga distancia y Cercanías por día, carretera frente a ferrocarril y la galería de gráficos.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #04080f;
+      --surface: #0a1628;
+      --surface-2: #0f1f38;
+      --border: rgba(56, 189, 248, 0.08);
+      --text: #e0e7ff;
+      --text-2: #7b8ba8;
+      --muted: #4a5568;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.4);
+      --good: #10b981;
+      --warn: #f59e0b;
+      --crit: #ef4444;
+      --radius: 10px;
+      --mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(56,189,248,0.06), transparent 60%), var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    a { color: var(--accent); }
+    header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+    header h1 .accent { color: var(--accent); }
+    header nav { margin-left: auto; display: flex; gap: 14px; }
+    header nav a { color: var(--text-2); text-decoration: none; font-size: 13px; }
+    header nav a:hover { color: var(--accent); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+    .intro, .note { color: var(--text-2); margin-bottom: 10px; }
+    #status { font-family: var(--mono); font-size: 12px; color: var(--text-2); margin-bottom: 20px; }
+    #status.err { color: var(--crit); }
+    .section-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-2);
+      margin: 28px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .card-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-2);
+      margin-bottom: 12px;
+    }
+    .chart-wrap { position: relative; height: 240px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    caption { text-align: left; color: var(--text-2); font-size: 12px; padding-bottom: 8px; }
+    th {
+      text-align: left;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td { padding: 7px 8px; border-bottom: 1px solid rgba(56,189,248,0.04); color: var(--text-2); white-space: nowrap; }
+    td:first-child { color: var(--text); }
+    .td-num { font-family: var(--mono); text-align: right; }
+    .badge { display: inline-block; font: 600 10px/1 var(--mono); letter-spacing: 1px; padding: 4px 7px; border-radius: 4px; }
+    .badge.ok { background: rgba(16,185,129,0.15); color: var(--good); }
+    .badge.late { background: rgba(239,68,68,0.15); color: var(--crit); }
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+    .kpi-value { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--accent); text-shadow: 0 0 12px var(--accent-glow); }
+    .kpi-value.crit { color: var(--crit); text-shadow: none; }
+    .kpi-value.muted { color: var(--text-2); text-shadow: none; }
+    .kpi-label { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .sources { list-style: none; font-size: 12px; }
+    .sources li { margin-bottom: 4px; color: var(--text-2); }
+    .gallery h3 { font-size: 15px; margin: 24px 0 4px; }
+    .gallery p { color: var(--text-2); font-size: 12px; margin-bottom: 8px; }
+    .gallery img { width: 100%; height: auto; display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .empty-msg { color: var(--muted); font-style: italic; text-align: center; padding: 20px; }
+  </style>
+  <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+  <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>🗂️ <span class="accent">Datos registrados</span></h1>
+  <nav aria-label="Navegación"><a href="/">Mapa en directo</a><a href="/accidente">Accidente 28 oct</a></nav>
+</header>
+
+<div class="container">
+  <p class="intro">Todo lo que ve el mapa en directo se guarda cada minuto o cada cinco minutos en la rama <a href="https://github.com/EdenRochmanSharabi/renfe-tracker/tree/data">data</a> del repositorio: posiciones y retrasos de larga distancia, Cercanías y Rodalies, Metro Bilbao, Euskotren y FGC, horarios, avisos de Renfe, meteorología, alertas de AEMET, sismos y clima espacial. Esta página resume ese archivo con un fichero que GitHub Actions regenera cada mañana.</p>
+  <p id="status" aria-live="polite">Cargando el resumen…</p>
+
+  <div class="section-title">Estado de la recogida</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table id="tbl-captures">
+        <caption id="cap-caption">Capturas por fuente. Esperadas = capturas de un día completo; de noche (00:00 a 05:00 UTC) no circulan trenes y no se guarda nada.</caption>
+        <thead><tr><th scope="col">Fuente</th><th scope="col">Hoy</th><th scope="col">Último día completo</th><th scope="col">Esperadas</th><th scope="col">Última captura (UTC)</th><th scope="col">Estado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-title">Larga distancia por día</div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">Retraso de los trenes con retraso (min)</div><div class="chart-wrap"><canvas id="chart-ld" role="img" aria-label="Retraso medio y máximo de los trenes de larga distancia por día"></canvas></div></div>
+    <div class="card"><div class="card-title">Trenes con retraso por hora (%)</div><div class="chart-wrap"><canvas id="chart-ld-hour" role="img" aria-label="Porcentaje de trenes con retraso por hora del día"></canvas></div></div>
+  </div>
+  <p class="note" id="ld-note"></p>
+
+  <div class="section-title">Cercanías por núcleo</div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">Retraso medio (min)</div><div class="chart-wrap"><canvas id="chart-cer" role="img" aria-label="Retraso medio de Cercanías por núcleo y día"></canvas></div></div>
+    <div class="card"><div class="card-title">Posiciones con 5 min o más (%)</div><div class="chart-wrap"><canvas id="chart-cer-late" role="img" aria-label="Porcentaje de posiciones de Cercanías con 5 minutos o más de retraso, por núcleo y día"></canvas></div></div>
+  </div>
+  <p class="note" id="cer-note"></p>
+
+  <div class="section-title">Carretera y ferrocarril en 2026</div>
+  <div class="kpi-row" id="kpis"></div>
+  <div class="card">
+    <p class="note" id="rr-text"></p>
+    <ul class="sources" id="rr-sources"></ul>
+  </div>
+
+  <div class="section-title">Galería</div>
+  <p class="note">Gráficos generados cada día a partir de la rama data (textos en inglés, los mismos que en el README).</p>
+  <div class="gallery" id="gallery"></div>
+</div>
+
+<script>
+(function () {
+  var GALLERY = "https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery";
+  // dev: ?src=/path/local.json (relative paths only, so it stays same-origin)
+  var dev = new URLSearchParams(location.search).get("src");
+  var SRC = dev && !/^[a-z]+:|^\/\//i.test(dev) ? dev : GALLERY + "/summary.json?t=" + Math.floor(Date.now() / 36e5);
+  var LABELS = { extra: "Larga distancia (feed Renfe, 1/min)", gps: "GPS larga distancia (5 min)", stats: "Estadísticas de flota (5 min)",
+    cercanias: "Cercanías y Rodalies (5 min)", regional: "Metro Bilbao, Euskotren, FGC (5 min)", env: "AEMET, IGN, Kp, EMS (15 min)",
+    schedule: "Horarios (1/h)", weather: "Meteo Open-Meteo (1/h)", alerts: "Avisos Renfe (1/h)" };
+  var ORDER = ["extra", "gps", "stats", "cercanias", "regional", "env", "schedule", "weather", "alerts"];
+  var NUCLEI = ["Madrid", "Rodalies Catalunya", "Asturias", "Cantabria"];
+  var LATE_MS = 2 * 36e5;   // last capture older than this at generation time = late
+  var STALE_MS = 30 * 36e5; // summary older than this = the workflow did not run
+  var INK_MUTED = "#7b8ba8", GRID = "rgba(123, 139, 168, 0.12)";
+  var PALETTE = ["#38bdf8", "#f87171", "#a78bfa", "#10b981", "#f59e0b"];
+
+  Chart.defaults.color = INK_MUTED;
+  Chart.defaults.borderColor = GRID;
+  Chart.defaults.font.family = '"JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo, monospace';
+  Chart.defaults.font.size = 10;
+  Chart.defaults.plugins.tooltip.backgroundColor = "rgba(15, 31, 56, 0.96)";
+  Chart.defaults.plugins.tooltip.titleColor = "#e0e7ff";
+  Chart.defaults.plugins.tooltip.bodyColor = "#e0e7ff";
+  Chart.defaults.plugins.tooltip.borderColor = "rgba(56, 189, 248, 0.25)";
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.animation.duration = 300;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+  function td(text, cls) { return el("td", text, cls); }
+  function dm(day) { return day.slice(8, 10) + "/" + day.slice(5, 7); }
+  function fmt(x, unit) { return x == null ? "sin datos" : x.toLocaleString("es-ES") + (unit || ""); }
+  function utc(s) { return Date.parse(s.length === 16 ? s + ":00Z" : s); }
+  function lineChart(id, labels, datasets, unit, max) {
+    return new Chart($(id), { type: "line", data: { labels: labels, datasets: datasets.map(function (d, i) {
+        return { label: d.label, data: d.data, yAxisID: d.right ? "y1" : "y", borderColor: PALETTE[i], backgroundColor: PALETTE[i], borderWidth: 2, pointRadius: labels.length > 40 ? 0 : 2, pointHoverRadius: 4, tension: 0.25, spanGaps: false }; }) },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle" } },
+          tooltip: { callbacks: { label: function (c) { return c.dataset.label + ": " + (c.parsed.y == null ? "sin datos" : c.parsed.y.toLocaleString("es-ES") + unit); } } } },
+        scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+          y: { beginAtZero: true, max: max, grid: { color: GRID }, border: { display: false }, ticks: { maxTicksLimit: 5 } },
+          y1: { display: datasets.some(function (d) { return d.right; }), position: "right", beginAtZero: true, grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 5 } } } } });
+  }
+
+  function renderCaptures(J) {
+    var C = J.captures, tbody = $("tbl-captures").querySelector("tbody");
+    if (!C) { tbody.appendChild(el("tr")).appendChild(td("Sin datos de capturas", "empty-msg")); return; }
+    var gen = Date.parse(J.generated_at), today = J.generated_at.slice(0, 10), full = J.days && J.days.last < today ? J.days.last : new Date(gen - 864e5).toISOString().slice(0, 10);
+    $("cap-caption").textContent += " Hoy = " + today + " hasta las " + J.generated_at.slice(11, 16) + " UTC; último día completo = " + full + ".";
+    ORDER.concat(Object.keys(C).filter(function (s) { return ORDER.indexOf(s) < 0; })).forEach(function (s) {
+      var c = C[s]; if (!c) return;
+      var tr = el("tr"), last = c.last_utc ? utc(c.last_utc) : NaN, late = !(gen - last <= LATE_MS);
+      tr.appendChild(td(LABELS[s] || s));
+      tr.appendChild(td(fmt(c.days[today] || 0), "td-num"));
+      tr.appendChild(td(fmt(c.days[full] || 0), "td-num"));
+      tr.appendChild(td(fmt(c.expected_per_day), "td-num"));
+      tr.appendChild(td(c.last_utc ? c.last_utc.replace("T", " ") : "nunca", "mono"));
+      tr.appendChild(td()).appendChild(el("span", late ? "TARDE" : "OK", "badge " + (late ? "late" : "ok")));
+      tr.lastChild.firstChild.setAttribute("title", late ? "Más de 2 h sin capturas al generar el resumen" : "Capturas en las 2 h anteriores al resumen");
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderLongDistance(J) {
+    var L = J.long_distance_by_day, days = Object.keys(L || {}).sort();
+    if (!days.length) { $("ld-note").textContent = "Sin datos de larga distancia."; return; }
+    lineChart("chart-ld", days.map(dm), [
+      { label: "Retraso medio (min)", data: days.map(function (d) { return L[d].mean_delay_of_delayed_min; }) },
+      { label: "Retraso máximo (min, eje derecho)", data: days.map(function (d) { return L[d].max_delay_min; }), right: true }], " min");
+    var hours = []; for (var h = 0; h < 24; h++) hours.push(h + ":00");
+    var mean = hours.map(function (_, h) { var v = days.map(function (d) { return L[d].pct_delayed_by_hour[h]; }).filter(function (x) { return x != null; });
+      return v.length ? Math.round(v.reduce(function (a, b) { return a + b; }, 0) / v.length * 10) / 10 : null; });
+    var last = days[days.length - 1];
+    lineChart("chart-ld-hour", hours, [{ label: "Media de " + days.length + " días", data: mean }, { label: dm(last), data: L[last].pct_delayed_by_hour }], " %", 100);
+    var worst = days.reduce(function (a, d) { return L[d].pct_delayed > L[a].pct_delayed ? d : a; });
+    $("ld-note").textContent = "Fuente: stats/ (feed de Renfe cada 5 min), instantáneas con 20 trenes o más. Media = retraso medio de los trenes que llevan retraso (1 min o más). " +
+      days.length + " días, del " + days[0] + " al " + last + "; horas en Europa/Madrid. Peor día: " + worst + " con el " + L[worst].pct_delayed.toLocaleString("es-ES") + " % de trenes con retraso.";
+  }
+
+  function renderCercanias(J) {
+    var Z = J.cercanias_by_day, days = Object.keys(Z || {}).sort();
+    if (!days.length) { $("cer-note").textContent = "Sin datos de Cercanías."; return; }
+    var series = function (key) { return NUCLEI.map(function (n) { return { label: n, data: days.map(function (d) { return Z[d][n] ? Z[d][n][key] : null; }) }; }); };
+    lineChart("chart-cer", days.map(dm), series("mean_delay_min"), " min");
+    lineChart("chart-cer-late", days.map(dm), series("pct_late_5min"), " %", 100);
+    var n = days.reduce(function (a, d) { return a + NUCLEI.reduce(function (b, k) { return b + (Z[d][k] ? Z[d][k].n : 0); }, 0); }, 0);
+    $("cer-note").textContent = "Fuente: cercanias/ (GTFS-RT de Renfe, CC BY 4.0), capturas cada 5 min; " + fmt(n) + " posiciones con retraso conocido en " + days.length + " días, del " + days[0] + " al " + days[days.length - 1] +
+      ". Núcleos por caja de coordenadas; el retraso del feed se desenrolla a medianoche.";
+  }
+
+  function renderRailRoad(J) {
+    var R = J.rail_vs_road_2026, box = $("kpis");
+    if (!R || !R.rows) { box.appendChild(el("div", "Sin datos", "empty-msg")); return; }
+    var pick = function (mode, meas, pre) { return R.rows.filter(function (r) { return r.mode === mode && r.measure === meas && r.period.indexOf(pre) === 0; })[0]; };
+    var r26 = pick("road", "deaths_ytd_dgt_24h_interurban", "2026"), r25 = pick("road", "deaths_ytd_dgt_24h_interurban", "2025"), rail = R.rows.filter(function (r) { return r.mode === "rail" && r.measure === "deaths_accident"; });
+    var tiles = [];
+    if (r26) tiles.push([r26.value, "Carretera 2026 (" + r26.period.replace("/", " a ") + ")", ""]);
+    if (r25) tiles.push([r25.value, "Carretera 2025, mismo periodo", "muted"]);
+    rail.forEach(function (r) { tiles.push([r.value, "Ferrocarril: " + r.period + " (" + r.status + ")", "crit"]); });
+    if (rail.length > 1) tiles.push([rail.reduce(function (a, r) { return a + r.value; }, 0), "Ferrocarril, suma de los dos accidentes", "crit"]);
+    tiles.forEach(function (t) { var k = box.appendChild(el("div", null, "kpi")); k.appendChild(el("div", fmt(t[0]), "kpi-value " + t[2])); k.appendChild(el("div", t[1], "kpi-label")); });
+    var H = R.header || {};
+    $("rr-text").textContent = ["Carretera: DGT, muertos a 24 h en vías interurbanas, provisional. Ferrocarril: cifras de prensa de los accidentes de Adamuz y Urda. No son comparables entre sí ni con las series de Eurostat.",
+      H.definitions, H.as_of_note, H.comparability, H.caveats].filter(Boolean).join(" ");
+    var ul = $("rr-sources");
+    R.rows.forEach(function (r) {
+      var li = el("li", r.mode + " " + r.measure + " " + r.period + ": " + fmt(r.value) + " (" + r.status + ", " + r.as_of + ") ");
+      if (r.source_url && /^https?:\/\//.test(r.source_url)) { var a = el("a", "fuente"); a.href = r.source_url; a.rel = "noopener"; a.target = "_blank"; li.appendChild(a); }
+      if (r.note) li.appendChild(el("span", " " + r.note));
+      ul.appendChild(li);
+    });
+    if (H.sources) ul.appendChild(el("li", "Fuentes: " + H.sources));
+  }
+
+  function renderGallery(J) {
+    var box = $("gallery"), v = encodeURIComponent(J.generated_at);
+    if (!J.gallery || !J.gallery.length) { box.appendChild(el("div", "Sin gráficos en el resumen", "empty-msg")); return; }
+    J.gallery.forEach(function (g) {
+      if (!/^[\w-]+$/.test(g.name)) return;
+      box.appendChild(el("h3", g.title));
+      if (g.sub) box.appendChild(el("p", g.sub));
+      var img = el("img"); img.alt = g.title; img.loading = "lazy"; img.src = GALLERY + "/img/" + g.name + "-dark.png?v=" + v;
+      box.appendChild(img);
+      if (g.foot) box.appendChild(el("p", g.foot));
+    });
+  }
+
+  fetch(SRC).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (J) {
+    var age = Date.now() - Date.parse(J.generated_at), st = $("status");
+    st.textContent = "Resumen generado el " + J.generated_at.replace("T", " ").replace("Z", " UTC") + (J.days ? "; " + J.days.n + " días, del " + J.days.first + " al " + J.days.last : "") + ".";
+    if (!(age < STALE_MS)) { st.textContent += " Lleva más de 30 h sin regenerarse: revisa el workflow update-charts."; st.className = "err"; }
+    [renderCaptures, renderLongDistance, renderCercanias, renderRailRoad, renderGallery].forEach(function (f) {
+      try { f(J); } catch (e) { console.error(f.name, e); }
+    });
+  }).catch(function (e) {
+    var st = $("status"); st.className = "err";
+    st.textContent = "No se pudo cargar el resumen (" + e.message + "). Se publica cada mañana en la rama gallery del repositorio; si acaba de crearse, vuelve a intentarlo más tarde.";
+  });
+})();
+</script>
+</body>
+</html>

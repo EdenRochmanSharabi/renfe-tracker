@@ -30,12 +30,19 @@ jobs:
       - run: pip install -r main/scripts/charts/requirements.txt
       - name: Build the charts
         run: python3 main/scripts/charts/build.py data "$RUNNER_TEMP/charts"
-      - name: Publish the PNGs to the orphan branch gallery (one fresh commit, force-pushed)
+      - name: Build summary.json for the website (a failure keeps the previous one and does not block the charts)
+        run: |
+          if ! python3 main/scripts/charts/summary.py data "$RUNNER_TEMP/charts/summary.json" "$RUNNER_TEMP/charts/texts.json"; then
+            echo "::warning::summary.json not built, keeping the previous one"; echo "summary.json NOT built, previous one kept" >> "$GITHUB_STEP_SUMMARY"
+            curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/gallery/summary.json" -o "$RUNNER_TEMP/charts/summary.json" || true
+          fi
+      - name: Publish the PNGs and summary.json to the orphan branch gallery (one fresh commit, force-pushed)
         run: |
           mkdir "$RUNNER_TEMP/gallery" && cd "$RUNNER_TEMP/gallery"
           git init -q -b gallery && mkdir img && cp "$RUNNER_TEMP"/charts/*.png img/
+          cp "$RUNNER_TEMP"/charts/summary.json . 2>/dev/null || true
           git config user.name "$BOT_NAME" && git config user.email "$BOT_EMAIL"
-          git add img && git commit -q -m "gallery: charts $(date -u +%F)"
+          git add -A && git commit -q -m "gallery: charts $(date -u +%F)"
           git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gallery:gallery
       - name: Refresh the Gallery text in README.md (only if it changed)
         run: |
