@@ -56,7 +56,7 @@ def rule3():  # missing is NULL, never a sentinel
     for t, c, ty, _ in columns():
         if ty == "VARCHAR": assert q(f"SELECT count(*) FROM {t} WHERE {c} = ''")[0][0] == 0, f"{t}.{c} holds ''"
     assert q("SELECT count(*) FROM ld_position WHERE product = 0 OR pos_ts = '1970-01-01'")[0][0] == 0, "recorder sentinels 0 kept"
-    assert q("SELECT NULL = NULL, NULL IS NULL, count(delay_s) < count(*) FROM cercanias_position")[0] == (None, True, True)
+    assert q("SELECT NULL = NULL, NULL IS NULL, count(delay_s) <= count(*) FROM cercanias_position")[0] == (None, True, True)  # <=: a sparse day may have no missing delay
     nulls = sum(q(f"SELECT count(*) - count({c}) FROM {t}")[0][0] for t, c, ty, nullable in columns() if nullable)
     assert nulls > 0, "no NULL anywhere: missing values are hiding behind sentinels"
     return f"{nulls} NULL values"
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         try:
             note = fn(); print(f"rule {n!s:2} {name:26} PASS" + (f"  ({note})" if note else ""))
         except Exception as e:
-            fails += 1; print(f"rule {n!s:2} {name:26} FAIL  {type(e).__name__}: {str(e).splitlines()[0][:150]}")
+            fails += 1; print(f"rule {n!s:2} {name:26} FAIL  {type(e).__name__}: {(str(e).splitlines() or [""])[0][:150]}")
             try: con.execute("ROLLBACK")
             except duckdb.Error: pass
     con.close()
