@@ -12,6 +12,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: for f in api/*.js lib/*.js; do node --check "$f"; done
-      - run: python3 -m py_compile scripts/*.py scripts/charts/*.py
+      - run: python3 -m py_compile scripts/*.py scripts/charts/*.py scripts/db/*.py
       - run: node scripts/test-dispatcher.mjs
       - run: for f in .github/workflows/*.yml; do ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f"; done

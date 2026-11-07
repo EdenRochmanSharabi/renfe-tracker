@@ -1,0 +1,88 @@
+name: build-db
+on:
+  schedule:
+    - cron: "15 8 * * *"   # 08:15 UTC: build yesterday's partition (after the 07:15 chart update)
+    - cron: "15 9 * * 0"   # Sunday 09:15 UTC: rebuild three random published days and compare checksums
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "day to build (YYYY-MM-DD, default yesterday)"
+        default: ""
+      verify:
+        description: "instead of building, rebuild this many random days of the last 30 and verify them"
+        default: ""
+permissions:
+  contents: write
+  issues: write
+concurrency: build-db
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+jobs:
+  build:
+    if: github.event.schedule == '15 8 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.verify == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r main/scripts/db/requirements.txt
+      - name: Sparse checkout of one day of the data branch (no history)
+        run: |
+          DAY="${{ github.event.inputs.day }}"; DAY="${DAY:-$(date -u -d yesterday +%F)}"; echo "DAY=$DAY" >> "$GITHUB_ENV"
+          git clone -q --depth 1 --branch data --filter=blob:none --sparse "https://github.com/$REPO.git" data
+          P=(/static/renfe_estaciones.csv "/gps/$DAY.json" "/gps-night/$DAY.json" "/stats/$DAY.json")
+          for k in extra cercanias regional env schedule weather alerts; do P+=("/$k/$DAY/"); done
+          git -C data sparse-checkout set --no-cone "${P[@]}"
+          du -sh data --exclude=.git
+      - name: Build the partition, fetch the two previous ones, check Codd's rules over the three
+        run: |
+          mkdir -p db && python3 main/scripts/db/ingest.py data db
+          for i in 1 2; do
+            D=$(date -u -d "$DAY -$i day" +%F)
+            gh release download "db-${D:0:7}" --repo "$REPO" -p "$D.duckdb.zst" -D db && zstd -d -q --rm "db/$D.duckdb.zst" || echo "no partition for $D yet"
+          done
+          python3 main/scripts/db/test_codd.py db/*.duckdb
+      - name: Publish the partition as an asset of the db-YYYY-MM release
+        run: |
+          REL="db-${DAY:0:7}"
+          zstd -19 --long=27 -T0 -q "db/$DAY.duckdb" -o "db/$DAY.duckdb.zst"
+          gh release view "$REL" --repo "$REPO" >/dev/null 2>&1 || gh release create "$REL" --repo "$REPO" --title "$REL" \
+            --notes "One DuckDB partition per UTC day (zstd). Decompress with zstd -d, query with scripts/db/federate.py. See scripts/db/README.md."
+          gh release upload "$REL" "db/$DAY.duckdb.zst" --repo "$REPO" --clobber
+      - name: Open an issue when the build fails
+        if: failure()
+        run: |
+          gh issue create --repo "$REPO" --title "database build failed $(date -u +%F)" \
+            --body "The daily partition build failed. Run: ${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
+  verify:
+    if: github.event.schedule == '15 9 * * 0' || github.event.inputs.verify != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r main/scripts/db/requirements.txt
+      - name: Download random published days, rebuild them from the JSON and compare every table's checksum
+        run: |
+          N="${{ github.event.inputs.verify }}"; N="${N:-3}"
+          mkdir -p pub && for i in $(shuf -i 1-30 -n "$N"); do
+            D=$(date -u -d "-$i day" +%F)
+            gh release download "db-${D:0:7}" --repo "$REPO" -p "$D.duckdb.zst" -D pub && zstd -d -q --rm "pub/$D.duckdb.zst" || echo "no partition for $D"
+          done
+          ls pub/*.duckdb || { echo "nothing published to verify"; exit 0; }
+          git clone -q --depth 1 --branch data --filter=blob:none --sparse "https://github.com/$REPO.git" data
+          P=(/static/renfe_estaciones.csv)
+          for f in pub/*.duckdb; do D=$(basename "$f" .duckdb); P+=("/gps/$D.json" "/gps-night/$D.json" "/stats/$D.json")
+            for k in extra cercanias regional env schedule weather alerts; do P+=("/$k/$D/"); done; done
+          git -C data sparse-checkout set --no-cone "${P[@]}"
+          python3 main/scripts/db/ingest.py data rebuilt --verify pub
+      - name: Open an issue when a published partition differs from its rebuild
+        if: failure()
+        run: |
+          gh issue create --repo "$REPO" --title "database verification failed $(date -u +%F)" \
+            --body "A published partition does not match a rebuild from the data branch (or the rebuild failed). Run: ${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
