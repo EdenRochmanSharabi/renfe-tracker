@@ -92,11 +92,12 @@ def rule6():  # view write fails loudly; base-table write shows in both views
 
 def rule7():  # insert, update, delete on sets
     con.execute("BEGIN")
-    n0 = q("SELECT count(*) FROM ld_vehicle")[0][0]
-    con.execute("INSERT INTO ld_vehicle SELECT ts, seq + 100000, vehicle_id, status, stop_id FROM ld_vehicle LIMIT 100")
-    assert q("SELECT count(*) FROM ld_vehicle")[0][0] == n0 + 100
+    n0 = q("SELECT count(*) FROM ld_vehicle")[0][0]; k = min(100, n0)  # a sparse early day may have fewer than 100 rows
+    assert k > 0, "ld_vehicle is empty: nothing to copy"
+    con.execute(f"INSERT INTO ld_vehicle SELECT ts, seq + 100000, vehicle_id, status, stop_id FROM ld_vehicle LIMIT {k}")
+    assert q("SELECT count(*) FROM ld_vehicle")[0][0] == n0 + k
     con.execute("UPDATE ld_vehicle SET stop_id = 'r7' WHERE seq > 100000")
-    assert q("SELECT count(*) FROM ld_vehicle WHERE stop_id = 'r7'")[0][0] == 100
+    assert q("SELECT count(*) FROM ld_vehicle WHERE stop_id = 'r7'")[0][0] == k
     con.execute("DELETE FROM ld_vehicle WHERE seq > 100000")
     assert q("SELECT count(*) FROM ld_vehicle")[0][0] == n0
     con.execute("ROLLBACK")
