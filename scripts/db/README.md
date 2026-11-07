@@ -103,3 +103,13 @@ makes is rolled back; the first partition is byte-identical afterwards.
 | 11 distribution independence | partial | one file per day queried as one, and one query spanning two partitions; DuckDB is not a distributed DBMS |
 | 12 non-subversion | partial | COPY and set INSERTs cannot bypass constraints, parents cannot be deleted under children; the raw JSON upstream can still be altered by anyone with write access to the `data` branch (mitigated by the branch ruleset, the stored checksums and the Sunday rebuild) |
 | checksums | pass | every partition still holds the content its `checksum` table describes |
+
+## Retention (`prune-data.yml`)
+
+The raw JSON stays on the `data` branch for 30 days. Every Sunday (10:15 UTC) each day older than that is rebuilt from
+its JSON, compared table by table with its published partition, and only if every checksum matches is its JSON removed
+(at most 7 days per run, and a day without a published partition is never touched). A mismatch keeps the JSON and
+opens an issue. Run it by hand with `dry_run=true` (default) to list what would go. Removing files does not shrink the
+repository by itself: git keeps the old blobs until the history of `data` is squashed, which needs a one-off manual step
+with the branch ruleset bypassed (see the project notes). The partitions in the `db-YYYY-MM` releases are the permanent
+archive.

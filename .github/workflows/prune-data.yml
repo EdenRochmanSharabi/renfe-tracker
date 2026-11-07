@@ -1,0 +1,62 @@
+name: prune-data
+on:
+  schedule:
+    - cron: "15 10 * * 0"   # Sunday 10:15 UTC, after the weekly verification of build-db
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true: only list what would be removed"
+        default: "true"
+      keep_days:
+        description: "days of raw JSON kept on the data branch"
+        default: "30"
+      max_days:
+        description: "most days removed in one run"
+        default: "7"
+permissions:
+  contents: write
+  issues: write
+concurrency: prune-data
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+  DRY: ${{ github.event.inputs.dry_run || 'false' }}
+  KEEP: ${{ github.event.inputs.keep_days || '30' }}
+  MAX: ${{ github.event.inputs.max_days || '7' }}
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r main/scripts/db/requirements.txt
+      - name: Remove raw JSON older than KEEP days, only after the day is rebuilt from it and matches its published partition
+        run: |
+          git config --global user.name "github-actions[bot]"; git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git clone -q --depth 1 --branch data --filter=blob:none --sparse "https://x-access-token:${GH_TOKEN}@github.com/$REPO.git" data
+          CUT=$(date -u -d "-$KEEP day" +%F)
+          DAYS=$(for k in extra cercanias regional env schedule weather alerts; do git -C data ls-tree --name-only HEAD "$k/" | sed "s|^$k/||"; done | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort -u | awk -v c="$CUT" '$0 < c' | head -n "$MAX")
+          [ -n "$DAYS" ] || { echo "nothing older than $CUT"; exit 0; }
+          echo "candidates (older than $CUT): $DAYS"
+          for D in $DAYS; do
+            rm -rf pub rebuilt; mkdir pub
+            gh release download "db-${D:0:7}" --repo "$REPO" -p "$D.duckdb.zst" -D pub || { echo "$D: no published partition, kept"; continue; }
+            zstd -d -q --rm "pub/$D.duckdb.zst"
+            P=(/static/renfe_estaciones.csv "/gps/$D.json" "/gps-night/$D.json" "/stats/$D.json"); for k in extra cercanias regional env schedule weather alerts; do P+=("/$k/$D/"); done
+            git -C data sparse-checkout set --no-cone "${P[@]}"
+            python3 main/scripts/db/ingest.py data rebuilt --verify pub || { echo "$D: rebuild differs from the published partition, kept"; echo "FAILED=$D" >> "$GITHUB_ENV"; continue; }
+            if [ "$DRY" = true ]; then echo "$D: verified, would remove"; continue; fi
+            for k in extra cercanias regional env schedule weather alerts; do git -C data rm -r -q --ignore-unmatch "$k/$D"; done
+            for k in gps gps-night stats; do git -C data rm -q --ignore-unmatch "$k/$D.json"; done
+            git -C data commit -q -m "prune $D: raw JSON verified against its published partition (db-${D:0:7})"
+            for i in 1 2 3 4 5; do git -C data push -q origin HEAD:data && break; git -C data pull -q --rebase origin data; done
+            echo "$D: removed"
+          done
+      - name: Open an issue when a day did not match
+        if: env.FAILED != ''
+        run: |
+          gh issue create --repo "$REPO" --title "prune skipped ${FAILED} (mismatch with its partition)" \
+            --body "A day older than the retention window was rebuilt from the JSON and did not match its published partition, so its JSON was kept. Run: ${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
