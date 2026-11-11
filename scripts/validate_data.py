@@ -10,8 +10,10 @@ PER_CAPTURE = {
     "env":       ("2026-10-31", 96, 85, ["aemet", "kp", "ign", "ems"], 45),
 }
 HOURLY = {"schedule": (["tr"], 20), "weather": (["g", "w"], 24), "alerts": (["a"], 24)}  # dir -> (required keys, files per day; schedule saves nothing 00-03)
+DAY = 1440  # minutes in a day
 NIGHT = 300  # minutes: no trains run roughly 00:00-05:00 UTC, so recorders save nothing; that time is neither a gap nor expected
-SCALE = 1 - NIGHT / 1440
+TAIL = 70  # minutes: service also ends before 24:00 UTC (last Cercanias capture 22:58), so the end of the day is no gap either
+SCALE = 1 - (NIGHT + TAIL) / DAY
 DAILY = {"gps": ["p"], "stats": ["snapshots"]}  # gps-night is optional (only when few trains run)
 
 def load(path, keys, problems):
@@ -35,8 +37,8 @@ def check(root, day):
         if len(names) < minimum * SCALE:
             problems.append(f"{d}/{day}: {len(names)} captures, expected about {expect} (minimum {int(minimum * SCALE)})")
         mins = [int(n[:2]) * 60 + int(n[3:5]) for n in names]
-        if mins: mins = [0, *mins, 1440]  # the day edges count too: a first capture well after 05:00 is a gap
-        worst = max((b - a - max(0, min(b, NIGHT) - a) for a, b in zip(mins, mins[1:])), default=0)
+        if mins: mins = [0, *mins, DAY]  # the day edges count too: a first capture well after 05:00 is a gap
+        worst = max((b - a - max(0, min(b, NIGHT) - a) - max(0, b - max(a, DAY - TAIL)) for a, b in zip(mins, mins[1:])), default=0)
         if worst > gap: problems.append(f"{d}/{day}: gap of {worst} min (limit {gap})")
         for n in names: load(f"{p}/{n}", keys, problems)
     for d, (keys, expect) in HOURLY.items():
