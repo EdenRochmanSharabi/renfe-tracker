@@ -8,47 +8,47 @@ Charts are generated from the `data` branch and follow the light and dark theme.
 
 ### Long-distance trains trace the high-speed corridors
 
-<sub>1,243,356 train positions, 5-minute samples, 2026-09-19 to 2026-11-24. Source: Renfe GPS feed; lines: OSM high-speed</sub>
+<sub>1,267,488 train positions, 5-minute samples, 2026-09-19 to 2026-11-25. Source: Renfe GPS feed; lines: OSM high-speed</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-dark.png?v=c42c56c7">
-  <img alt="Long-distance trains trace the high-speed corridors" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-light.png?v=c42c56c7" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-dark.png?v=3d897d70">
+  <img alt="Long-distance trains trace the high-speed corridors" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map1-density-light.png?v=3d897d70" width="100%">
 </picture>
 
 ### Weekdays peak at 164 trains in service at 18:00; weekends reach 151
 
-<sub>Mean trains in service per 5-min snapshot, Europe/Madrid hours. Source: Renfe live feed via renfe-tracker stats, 2026-09-20 to 2026-11-24</sub>
+<sub>Mean trains in service per 5-min snapshot, Europe/Madrid hours. Source: Renfe live feed via renfe-tracker stats, 2026-09-20 to 2026-11-25</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/daily-rhythm-dark.png?v=c5ec9ba1">
-  <img alt="Weekdays peak at 164 trains in service at 18:00; weekends reach 151" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/daily-rhythm-light.png?v=c5ec9ba1" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/daily-rhythm-dark.png?v=99d5b008">
+  <img alt="Weekdays peak at 164 trains in service at 18:00; weekends reach 151" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/daily-rhythm-light.png?v=99d5b008" width="100%">
 </picture>
 
-### Typical delay is 5 min, but the slowest tenth runs 65+ min late at 23:00
+### Typical delay is 5 min, but the slowest tenth runs 64+ min late at 23:00
 
-<sub>Delay of positioned trains, GPS samples every 5 min (n=1,237,991), 05:00-23:59 Europe/Madrid. Source: renfe-tracker gps, 2026-09-19 to 2026-11-24</sub>
+<sub>Delay of positioned trains, GPS samples every 5 min (n=1,262,026), 05:00-23:59 Europe/Madrid. Source: renfe-tracker gps, 2026-09-19 to 2026-11-25</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-dark.png?v=2ce786e6">
-  <img alt="Typical delay is 5 min, but the slowest tenth runs 65+ min late at 23:00" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-light.png?v=2ce786e6" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-dark.png?v=a5e19cc1">
+  <img alt="Typical delay is 5 min, but the slowest tenth runs 64+ min late at 23:00" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/delay-by-hour-light.png?v=a5e19cc1" width="100%">
 </picture>
 
 ### Cercanias: 29% of positions are 5+ min late, led by Madrid and Barcelona
 
-<sub>1,717,580 vehicle positions from 6233 captures, 2026-10-31 to 2026-11-24, coloured by delay (min). Grey: OSM rail network</sub>
+<sub>1,799,817 vehicle positions from 6483 captures, 2026-10-31 to 2026-11-25, coloured by delay (min). Grey: OSM rail network</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-dark.png?v=fef78039">
-  <img alt="Cercanias: 29% of positions are 5+ min late, led by Madrid and Barcelona" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-light.png?v=fef78039" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-dark.png?v=ed5cee1f">
+  <img alt="Cercanias: 29% of positions are 5+ min late, led by Madrid and Barcelona" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/map2-cercanias-light.png?v=ed5cee1f" width="100%">
 </picture>
 
-### Rodalies Catalunya Cercanias trains ran 7.9 min late on average, the most of 4 nuclei
+### Rodalies Catalunya Cercanias trains ran 7.7 min late on average, the most of 4 nuclei
 
-<sub>Mean delay of observed vehicles, 5-min captures, 6233 captures, 2026-10-31 to 2026-11-24. Source: Renfe GTFS-RT</sub>
+<sub>Mean delay of observed vehicles, 5-min captures, 6483 captures, 2026-10-31 to 2026-11-25. Source: Renfe GTFS-RT</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-dark.png?v=4cd3ed2d">
-  <img alt="Rodalies Catalunya Cercanias trains ran 7.9 min late on average, the most of 4 nuclei" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-light.png?v=4cd3ed2d" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-dark.png?v=fedfe3a1">
+  <img alt="Rodalies Catalunya Cercanias trains ran 7.7 min late on average, the most of 4 nuclei" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/cercanias-by-nucleus-light.png?v=fedfe3a1" width="100%">
 </picture>
 
 ### 28 Oct 2026: long-distance traffic around Urda, 06:00 to 10:00 UTC
@@ -62,11 +62,11 @@ Charts are generated from the `data` branch and follow the light and dark theme.
 
 ### After the Urda collision the index in the cell reached 4.4, above the baseline p99 for that hour
 
-<sub>Health index, cell 39.25-39.50N / 4.00-3.75W, hourly, UTC, 28 Oct 2026; baseline = 65 normal days (8-17 scored days per hour)</sub>
+<sub>Health index, cell 39.25-39.50N / 4.00-3.75W, hourly, UTC, 28 Oct 2026; baseline = 66 normal days (8-17 scored days per hour)</sub>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety3-health-urda-dark.png?v=b44b1337">
-  <img alt="After the Urda collision the index in the cell reached 4.4, above the baseline p99 for that hour" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety3-health-urda-light.png?v=b44b1337" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety3-health-urda-dark.png?v=942aa7ff">
+  <img alt="After the Urda collision the index in the cell reached 4.4, above the baseline p99 for that hour" src="https://raw.githubusercontent.com/EdenRochmanSharabi/renfe-tracker/gallery/img/safety3-health-urda-light.png?v=942aa7ff" width="100%">
 </picture>
 
 <sub>One labelled event, no validated predictive claim: the index is a descriptive anomaly score, not tested as a warning. No score for hour 07 (too few captures before 07:50) and hour 10; hours 8-9 are after the collision. Baseline lines are drawn straight across hours without baseline. Cell = the highest-scoring cell of the Urda zone; the exact collision coordinates are not in the dataset.</sub>
